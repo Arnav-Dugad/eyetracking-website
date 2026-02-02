@@ -3,210 +3,2518 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeuroCursor: Gaze & Squint Interface</title>
+    <title>AccessGaze Pro - Eye Tracking for Accessibility</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         :root {
-            --neon: #00f3ff;
-            --alert: #ff0055;
-            --bg: #0a0a0a;
-            --panel: rgba(20, 20, 20, 0.9);
+            --primary: #4A90E2;
+            --primary-light: #6BA8F5;
+            --primary-dark: #357ABD;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --danger: #F44336;
+            --info: #00BCD4;
+            --bg: #F5F7FA;
+            --surface: #FFFFFF;
+            --text: #2C3E50;
+            --text-light: #7F8C8D;
+            --border: #E1E8ED;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --header-height: 140px;
         }
 
         body {
             margin: 0;
             background: var(--bg);
-            color: #fff;
-            font-family: 'Courier New', monospace; /* Cyberpunk monospace */
-            overflow: hidden; /* Prevent native scrolling */
-            cursor: none; /* Hide default mouse */
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            overflow: hidden;
+            cursor: none;
         }
 
-        /* --- THE GAZE CURSOR --- */
+        /* === GAZE CURSOR === */
         #gaze-cursor {
             position: fixed;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--neon);
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--primary);
             border-radius: 50%;
-            pointer-events: none; /* Let clicks pass through */
+            pointer-events: none;
             transform: translate(-50%, -50%);
-            z-index: 9999;
-            transition: background 0.1s, transform 0.1s;
-            box-shadow: 0 0 10px var(--neon);
-        }
-        #gaze-cursor::after {
-            content: '';
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 4px; height: 4px;
-            background: var(--neon);
-            transform: translate(-50%, -50%);
-            border-radius: 50%;
-        }
-        #gaze-cursor.clicking {
-            background: var(--alert);
-            border-color: var(--alert);
-            transform: translate(-50%, -50%) scale(0.8);
+            z-index: 10000;
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 20px var(--primary), 0 0 40px rgba(74, 144, 226, 0.3);
+            animation: pulse-cursor 2s infinite;
         }
 
-        /* --- UI LAYOUT --- */
+        @keyframes pulse-cursor {
+            0%, 100% { box-shadow: 0 0 20px var(--primary), 0 0 40px rgba(74, 144, 226, 0.3); }
+            50% { box-shadow: 0 0 30px var(--primary), 0 0 60px rgba(74, 144, 226, 0.5); }
+        }
+
+        #gaze-cursor::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            background: var(--primary);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        #gaze-cursor.clicking {
+            background: rgba(74, 144, 226, 0.4);
+            transform: translate(-50%, -50%) scale(1.4);
+            box-shadow: 0 0 40px var(--primary), 0 0 80px rgba(74, 144, 226, 0.6);
+        }
+
+        /* Dwell progress ring */
+        #dwell-ring {
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            right: -4px;
+            bottom: -4px;
+            border-radius: 50%;
+            border: 4px solid transparent;
+            border-top-color: var(--success);
+            border-right-color: var(--success);
+            transform: rotate(-90deg);
+            transition: transform 0.05s linear;
+            opacity: 0;
+        }
+
+        #gaze-cursor.dwelling #dwell-ring {
+            opacity: 1;
+        }
+
+        /* Click ripple effect */
+        .click-ripple {
+            position: fixed;
+            border: 3px solid var(--primary);
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            animation: ripple 0.6s ease-out forwards;
+            z-index: 9999;
+        }
+
+        @keyframes ripple {
+            from {
+                width: 20px;
+                height: 20px;
+                opacity: 1;
+            }
+            to {
+                width: 100px;
+                height: 100px;
+                opacity: 0;
+            }
+        }
+
+        /* === MAIN LAYOUT === */
         #app-container {
-            display: grid;
-            grid-template-columns: 250px 1fr;
+            display: flex;
+            flex-direction: column;
             height: 100vh;
         }
 
-        /* Sidebar / HUD */
-        #sidebar {
-            background: var(--panel);
-            border-right: 1px solid #333;
-            padding: 20px;
+        /* Header */
+        #header {
+            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
+            border-bottom: 2px solid var(--border);
+            padding: 16px 24px;
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
             gap: 20px;
             z-index: 100;
+            box-shadow: 0 4px 12px var(--shadow);
         }
 
-        /* Camera Preview */
-        .cam-wrapper {
-            width: 100%;
-            height: 150px;
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid #444;
-            position: relative;
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        #video-preview {
+
+        .logo-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        /* Camera Feed */
+        #camera-container {
+            position: relative;
+            width: 180px;
+            height: 135px;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 3px solid var(--border);
+            box-shadow: 0 4px 16px var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        #camera-container:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 24px var(--shadow);
+        }
+
+        #input-video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             transform: scaleX(-1);
         }
 
-        /* Stats & Calibration */
-        .stat-box { font-size: 12px; color: #888; }
-        .stat-val { color: var(--neon); font-weight: bold; font-size: 14px; }
-        
-        button {
-            background: #333;
+        .camera-status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
             color: #fff;
-            border: 1px solid var(--neon);
-            padding: 10px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse-dot 2s infinite;
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.9); }
+        }
+
+        .camera-stats {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            color: #fff;
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Control buttons */
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .icon-btn {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            color: var(--text);
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
-            font-family: inherit;
-            text-transform: uppercase;
-            transition: 0.2s;
-        }
-        button:hover { background: var(--neon); color: #000; }
-        button.active { background: var(--alert); border-color: var(--alert); }
-
-        /* Main Content Area */
-        #main-stage {
-            position: relative;
-            padding: 40px;
-            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px var(--shadow);
         }
 
-        /* --- CARDS (Targets) --- */
-        .card-grid {
+        .icon-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .icon-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+        }
+
+        /* === MAIN CONTENT === */
+        #main-content {
+            flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+            grid-template-columns: 280px 1fr;
+            overflow: hidden;
         }
-        .card {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            padding: 20px;
-            border-radius: 8px;
-            transition: 0.2s;
+
+        /* Sidebar Navigation */
+        #sidebar {
+            background: var(--surface);
+            border-right: 2px solid var(--border);
+            padding: 24px;
+            overflow-y: auto;
+            box-shadow: 2px 0 12px var(--shadow);
+        }
+
+        .nav-section {
+            margin-bottom: 32px;
+        }
+
+        .nav-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-light);
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+            padding-left: 4px;
+        }
+
+        .nav-item {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            text-align: left;
+            margin-bottom: 6px;
+            position: relative;
+        }
+
+        .nav-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 0;
+            background: var(--primary);
+            border-radius: 0 4px 4px 0;
+            transition: height 0.3s ease;
+        }
+
+        .nav-item:hover {
+            background: var(--bg);
+            transform: translateX(4px);
+        }
+
+        .nav-item:hover::before {
+            height: 60%;
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .nav-item.active::before {
+            height: 100%;
+            background: white;
+        }
+
+        .nav-icon {
+            font-size: 22px;
+            width: 28px;
             text-align: center;
         }
-        .card:hover { border-color: var(--neon); background: #222; }
-        .card:active { transform: scale(0.95); background: #333; }
 
-        /* --- EYE GYM GAME --- */
-        #game-layer {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
+        /* Main Stage */
+        #stage {
+            padding: 32px;
+            overflow-y: auto;
+            background: var(--bg);
+        }
+
+        #stage::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #stage::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        #stage::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 5px;
+        }
+
+        #stage::-webkit-scrollbar-thumb:hover {
+            background: var(--text-light);
+        }
+
+        .stage-content {
             display: none;
-            z-index: 500;
-        }
-        .game-target {
-            position: absolute;
-            width: 40px; height: 40px;
-            background: var(--alert);
-            border-radius: 50%;
-            box-shadow: 0 0 15px var(--alert);
-            transition: top 0.5s, left 0.5s;
+            max-width: 1400px;
+            animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* --- MOBILE ADJUSTMENTS --- */
-        @media (max-width: 768px) {
-            #app-container { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-            #sidebar { flex-direction: row; padding: 10px; height: auto; align-items: center; }
-            .cam-wrapper { width: 80px; height: 60px; }
-            .stat-box { display: none; } /* Hide stats on mobile to save space */
-            #gaze-cursor { width: 30px; height: 30px; } /* Bigger cursor for mobile visibility */
+        .stage-content.active {
+            display: block;
+        }
+
+        @keyframes fadeInUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(20px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+
+        .stage-header {
+            margin-bottom: 32px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .stage-header h1 {
+            font-size: 36px;
+            color: var(--text);
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .stage-header p {
+            font-size: 17px;
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        /* === VIRTUAL KEYBOARD === */
+        .keyboard {
+            background: var(--surface);
+            padding: 28px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px var(--shadow);
+        }
+
+        .keyboard-output {
+            background: linear-gradient(135deg, #fafbfc 0%, var(--bg) 100%);
+            border: 3px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            min-height: 140px;
+            font-size: 26px;
+            margin-bottom: 24px;
+            word-wrap: break-word;
+            position: relative;
+            line-height: 1.5;
+            font-weight: 500;
+            box-shadow: inset 0 2px 8px var(--shadow);
+        }
+
+        .output-cursor {
+            display: inline-block;
+            width: 3px;
+            height: 32px;
+            background: var(--primary);
+            animation: blink 1s infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        .word-suggestions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .suggestion {
+            background: var(--primary-light);
+            color: white;
+            padding: 10px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .suggestion:hover {
+            background: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .keyboard-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            justify-content: center;
+        }
+
+        .key {
+            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
+            border: 2px solid var(--border);
+            color: var(--text);
+            min-width: 58px;
+            height: 58px;
+            border-radius: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .key::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .key:hover::before {
+            opacity: 1;
+        }
+
+        .key:hover {
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .key span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .key.special {
+            background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .key.space {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        /* === COMMUNICATION BOARD === */
+        .comm-board {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+        }
+
+        .comm-card {
+            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
+            border: 3px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+            box-shadow: 0 4px 16px var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .comm-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .comm-card:hover::before {
+            opacity: 0.1;
+        }
+
+        .comm-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 12px 32px rgba(74, 144, 226, 0.3);
+        }
+
+        .comm-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .comm-icon {
+            font-size: 56px;
+            margin-bottom: 14px;
+            filter: drop-shadow(0 4px 8px var(--shadow));
+        }
+
+        .comm-text {
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+
+        .comm-category {
+            font-size: 12px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* === SMART HOME === */
+        .smart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .smart-card {
+            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
+            border: 3px solid var(--border);
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 6px 24px var(--shadow);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .smart-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 12px 40px var(--shadow);
+            border-color: var(--primary-light);
+        }
+
+        .smart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .smart-info {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .smart-icon {
+            font-size: 36px;
+            filter: drop-shadow(0 2px 8px var(--shadow));
+        }
+
+        .smart-title {
+            font-size: 19px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .smart-status {
+            font-size: 13px;
+            color: var(--text-light);
+            font-weight: 500;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 64px;
+            height: 32px;
+            background: #d1d8e0;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .toggle-switch.on {
+            background: linear-gradient(135deg, var(--success), #66BB6A);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .toggle-switch.on::after {
+            left: 34px;
+        }
+
+        .control-group {
+            margin-top: 20px;
+        }
+
+        .control-label {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .slider {
+            width: 100%;
+            height: 10px;
+            background: var(--bg);
+            border-radius: 5px;
+            position: relative;
+            cursor: pointer;
+            box-shadow: inset 0 1px 3px var(--shadow);
+        }
+
+        .slider-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            border-radius: 5px;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
+        }
+
+        .slider-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-top: 10px;
+        }
+
+        /* === MEDIA PLAYER === */
+        .media-player {
+            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 12px 48px var(--shadow);
+            max-width: 650px;
+            margin: 0 auto;
+            border: 3px solid var(--border);
+        }
+
+        .album-art {
+            width: 100%;
+            aspect-ratio: 1;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 20px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 96px;
+            box-shadow: 0 8px 32px rgba(74, 144, 226, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .album-art::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .track-info {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .track-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .track-artist {
+            font-size: 18px;
+            color: var(--text-light);
+            font-weight: 500;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            margin-bottom: 12px;
+            position: relative;
+            cursor: pointer;
+            box-shadow: inset 0 1px 3px var(--shadow);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            border-radius: 4px;
+            width: 30%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(74, 144, 226, 0.4);
+        }
+
+        .time-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-light);
+            margin-bottom: 32px;
+            font-weight: 600;
+        }
+
+        .media-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .media-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 3px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .media-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: scale(1.15);
+            box-shadow: 0 8px 24px rgba(74, 144, 226, 0.4);
+        }
+
+        .media-btn.play {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border-color: var(--primary);
+            font-size: 36px;
+            box-shadow: 0 8px 24px rgba(74, 144, 226, 0.4);
+        }
+
+        .media-btn.play:hover {
+            transform: scale(1.2);
+        }
+
+        /* === EMAIL/MESSAGES === */
+        .message-composer {
+            background: var(--surface);
+            border: 3px solid var(--border);
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 6px 24px var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            background: var(--bg);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+
+        .form-textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .contact-card {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .contact-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px var(--shadow);
+        }
+
+        .contact-card.selected {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .contact-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 12px;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .contact-name {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        /* === WEB BROWSER === */
+        .browser-bar {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .browser-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+
+        .browser-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .browser-input {
+            flex: 1;
+        }
+
+        .browser-shortcuts {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .shortcut-card {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .shortcut-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px var(--shadow);
+        }
+
+        .shortcut-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .shortcut-name {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        /* === PHONE DIALER === */
+        .dialer-display {
+            background: linear-gradient(135deg, #fafbfc 0%, var(--bg) 100%);
+            border: 3px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            font-size: 36px;
+            text-align: center;
+            margin-bottom: 24px;
+            min-height: 80px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            max-width: 400px;
+            margin: 0 auto 24px;
+        }
+
+        .dial-btn {
+            aspect-ratio: 1;
+            background: var(--surface);
+            border: 3px solid var(--border);
+            border-radius: 50%;
+            font-size: 32px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .dial-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+
+        .call-actions {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .call-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: none;
+            font-size: 36px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 20px var(--shadow);
+        }
+
+        .call-btn.call {
+            background: linear-gradient(135deg, var(--success), #66BB6A);
+            color: white;
+        }
+
+        .call-btn.end {
+            background: linear-gradient(135deg, var(--danger), #EF5350);
+            color: white;
+        }
+
+        .call-btn:hover {
+            transform: scale(1.15);
+        }
+
+        /* === NOTES === */
+        .notes-list {
+            display: grid;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .note-card {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .note-card:hover {
+            border-color: var(--primary);
+            transform: translateX(4px);
+            box-shadow: 0 6px 20px var(--shadow);
+        }
+
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .note-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .note-date {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .note-content {
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        /* === SETTINGS === */
+        .settings-grid {
+            display: grid;
+            gap: 24px;
+        }
+
+        .setting-card {
+            background: var(--surface);
+            border: 3px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 4px 16px var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .setting-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 8px 24px var(--shadow);
+        }
+
+        .setting-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .setting-title {
+            font-size: 19px;
+            font-weight: 700;
+        }
+
+        .setting-description {
+            color: var(--text-light);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .setting-control {
+            margin-top: 20px;
+        }
+
+        .setting-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .option-btn {
+            padding: 14px;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .option-btn:hover {
+            border-color: var(--primary);
+            background: var(--surface);
+        }
+
+        .option-btn.selected {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        /* === TUTORIAL OVERLAY === */
+        #tutorial-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #tutorial-overlay.active {
+            display: flex;
+        }
+
+        .tutorial-box {
+            background: var(--surface);
+            border-radius: 24px;
+            padding: 48px;
+            max-width: 680px;
+            text-align: center;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+            animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .tutorial-box h2 {
+            font-size: 32px;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tutorial-box > p {
+            font-size: 17px;
+            line-height: 1.8;
+            color: var(--text-light);
+            margin-bottom: 32px;
+        }
+
+        .tutorial-steps {
+            text-align: left;
+            margin: 32px 0;
+        }
+
+        .tutorial-step {
+            display: flex;
+            align-items: start;
+            gap: 18px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--bg);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .tutorial-step:hover {
+            background: var(--surface);
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+        }
+
+        .step-text {
+            flex: 1;
+        }
+
+        .step-text strong {
+            display: block;
+            font-size: 16px;
+            margin-bottom: 4px;
+            color: var(--text);
+        }
+
+        .tutorial-btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border: none;
+            padding: 18px 48px;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .tutorial-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(74, 144, 226, 0.5);
+        }
+
+        /* === EMERGENCY BUTTON === */
+        #emergency-btn {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            width: 88px;
+            height: 88px;
+            background: linear-gradient(135deg, var(--danger), #EF5350);
+            color: white;
+            border: 4px solid white;
+            border-radius: 50%;
+            font-size: 36px;
+            cursor: pointer;
+            box-shadow: 0 8px 32px rgba(244, 67, 54, 0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: emergency-pulse 2s infinite;
+        }
+
+        @keyframes emergency-pulse {
+            0%, 100% {
+                box-shadow: 0 8px 32px rgba(244, 67, 54, 0.5);
+            }
+            50% {
+                box-shadow: 0 12px 48px rgba(244, 67, 54, 0.7);
+            }
+        }
+
+        #emergency-btn:hover {
+            transform: scale(1.15);
+            box-shadow: 0 12px 40px rgba(244, 67, 54, 0.7);
+        }
+
+        /* === NOTIFICATION === */
+        .notification {
+            position: fixed;
+            top: 160px;
+            right: 32px;
+            background: var(--surface);
+            border: 3px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 24px;
+            box-shadow: 0 12px 40px var(--shadow);
+            z-index: 9998;
+            animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 360px;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(500px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            border-color: var(--success);
+        }
+
+        .notification.info {
+            border-color: var(--info);
+        }
+
+        .notification-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .notification-icon {
+            font-size: 28px;
+        }
+
+        .notification-title {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .notification-message {
+            color: var(--text-light);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* === MOBILE BOTTOM NAV === */
+        #mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--surface);
+            border-top: 2px solid var(--border);
+            padding: 10px;
+            z-index: 200;
+            box-shadow: 0 -4px 20px var(--shadow);
+        }
+
+        .mobile-nav-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+        }
+
+        .mobile-nav-item {
+            background: transparent;
+            border: none;
+            padding: 10px 4px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            color: var(--text-light);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .mobile-nav-item .nav-icon {
+            font-size: 24px;
+        }
+
+        .mobile-nav-item.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 968px) {
+            :root {
+                --header-height: 120px;
+            }
+
+            #header {
+                flex-wrap: wrap;
+                padding: 12px;
+                gap: 12px;
+            }
+
+            .logo {
+                font-size: 18px;
+            }
+
+            .logo-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 20px;
+            }
+
+            #camera-container {
+                width: 140px;
+                height: 105px;
+            }
+
+            .header-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .icon-btn {
+                flex: 1;
+                font-size: 12px;
+                padding: 8px 12px;
+                min-width: 0;
+            }
+
+            .icon-btn span {
+                display: none;
+            }
+
+            #main-content {
+                grid-template-columns: 1fr;
+                padding-bottom: 70px;
+            }
+
+            #sidebar {
+                display: none;
+            }
+
+            #mobile-nav {
+                display: block;
+            }
+
+            #stage {
+                padding: 20px;
+            }
+
+            .stage-header h1 {
+                font-size: 26px;
+            }
+
+            .stage-header p {
+                font-size: 14px;
+            }
+
+            .keyboard {
+                padding: 16px;
+            }
+
+            .keyboard-output {
+                font-size: 20px;
+                min-height: 100px;
+                padding: 16px;
+            }
+
+            .keyboard-row {
+                gap: 6px;
+            }
+
+            .key {
+                min-width: 42px;
+                height: 42px;
+                font-size: 16px;
+            }
+
+            .key.space {
+                min-width: 150px;
+            }
+
+            .comm-board {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+
+            .comm-card {
+                padding: 20px;
+            }
+
+            .comm-icon {
+                font-size: 44px;
+            }
+
+            .comm-text {
+                font-size: 16px;
+            }
+
+            .smart-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .media-player {
+                padding: 24px;
+            }
+
+            .album-art {
+                font-size: 72px;
+            }
+
+            .track-title {
+                font-size: 22px;
+            }
+
+            .media-btn {
+                width: 56px;
+                height: 56px;
+                font-size: 24px;
+            }
+
+            .media-btn.play {
+                width: 68px;
+                height: 68px;
+                font-size: 30px;
+            }
+
+            #emergency-btn {
+                width: 68px;
+                height: 68px;
+                font-size: 28px;
+                bottom: 90px;
+                right: 20px;
+            }
+
+            #gaze-cursor {
+                width: 44px;
+                height: 44px;
+            }
+
+            .tutorial-box {
+                padding: 32px;
+            }
+
+            .tutorial-box h2 {
+                font-size: 24px;
+            }
+
+            .tutorial-box > p {
+                font-size: 14px;
+            }
+
+            .notification {
+                right: 12px;
+                left: 12px;
+                max-width: none;
+                top: 140px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .comm-board {
+                grid-template-columns: 1fr;
+            }
+
+            .keyboard-row {
+                gap: 4px;
+            }
+
+            .key {
+                min-width: 36px;
+                height: 36px;
+                font-size: 14px;
+            }
+
+            .dialer-pad {
+                gap: 12px;
+            }
+
+            .contact-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 <body>
 
-    <div id="gaze-cursor"></div>
+    <!-- Gaze Cursor -->
+    <div id="gaze-cursor">
+        <div id="dwell-ring"></div>
+    </div>
 
-    <div id="app-container">
-        <div id="sidebar">
-            <div class="cam-wrapper">
-                <video id="input-video" playsinline muted autoplay></video>
-            </div>
+    <!-- Tutorial Overlay -->
+    <div id="tutorial-overlay" class="active">
+        <div class="tutorial-box">
+            <h2>👁️ Welcome to AccessGaze Pro</h2>
+            <p>Advanced eye tracking technology designed to enhance independence, communication, and control for everyone.</p>
             
-            <div class="stat-box">
-                <div>SQUINT LEVEL: <span id="squint-val" class="stat-val">0.0</span></div>
-                <div>X: <span id="x-val" class="stat-val">0</span> Y: <span id="y-val" class="stat-val">0</span></div>
-            </div>
-
-            <button onclick="recenterCursor()">🎯 Recenter</button>
-            <button onclick="toggleGame()">🕹️ Eye Gym</button>
-        </div>
-
-        <div id="main-stage">
-            <h1>Neuro_Interface v2.0</h1>
-            <p>Move your head/eyes to control the cursor. <b>Squint</b> to click.</p>
-            
-            <div class="card-grid" id="demo-grid">
+            <div class="tutorial-steps">
+                <div class="tutorial-step">
+                    <div class="step-number">1</div>
+                    <div class="step-text">
+                        <strong>Position yourself</strong>
+                        Sit comfortably 40-60cm from your camera with good lighting on your face
+                    </div>
                 </div>
+                <div class="tutorial-step">
+                    <div class="step-number">2</div>
+                    <div class="step-text">
+                        <strong>Control with your gaze</strong>
+                        Move your head/eyes to control the glowing blue cursor on screen
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-number">3</div>
+                    <div class="step-text">
+                        <strong>Click by dwelling or squinting</strong>
+                        Look at a button for 1 second (dwell) or squint both eyes to activate it
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-number">4</div>
+                    <div class="step-text">
+                        <strong>Emergency button</strong>
+                        The red button (bottom-right) sends instant help alerts
+                    </div>
+                </div>
+            </div>
+
+            <button class="tutorial-btn" onclick="closeTutorial()">Get Started 🚀</button>
         </div>
     </div>
 
-    <div id="game-layer">
-        <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center;">
-            <h2 style="color: var(--alert); text-shadow: 0 0 10px var(--alert);">TARGET PRACTICE</h2>
-            <p>Squint at the red orbs to destroy them.</p>
-            <div id="score">Score: 0</div>
-            <button onclick="toggleGame()" style="margin-top:10px;">Exit</button>
+    <!-- Main App -->
+    <div id="app-container">
+        <!-- Header -->
+        <div id="header">
+            <div class="logo">
+                <div class="logo-icon">👁️</div>
+                <span>AccessGaze Pro</span>
+            </div>
+
+            <div id="camera-container">
+                <video id="input-video" playsinline muted autoplay></video>
+                <div class="camera-status">
+                    <div class="status-dot"></div>
+                    <span>TRACKING</span>
+                </div>
+                <div class="camera-stats">
+                    <span>X: <span id="x-pos">0</span></span>
+                    <span>Y: <span id="y-pos">0</span></span>
+                </div>
+            </div>
+
+            <div class="header-controls">
+                <button class="icon-btn" onclick="showTutorial()">
+                    <span>📖</span> Tutorial
+                </button>
+                <button class="icon-btn active" id="dwell-toggle" onclick="toggleDwell()">
+                    <span>⏱️</span> Dwell
+                </button>
+                <button class="icon-btn active" id="squint-toggle" onclick="toggleSquint()">
+                    <span>👁️</span> Squint
+                </button>
+                <button class="icon-btn" onclick="recalibrate()">
+                    <span>🎯</span> Calibrate
+                </button>
+            </div>
         </div>
-        <div id="target" class="game-target" style="top: 50%; left: 50%;"></div>
+
+        <!-- Main Content -->
+        <div id="main-content">
+            <!-- Sidebar Navigation -->
+            <div id="sidebar">
+                <div class="nav-section">
+                    <div class="nav-title">Communication</div>
+                    <button class="nav-item active" onclick="switchTab('keyboard')">
+                        <span class="nav-icon">⌨️</span>
+                        Virtual Keyboard
+                    </button>
+                    <button class="nav-item" onclick="switchTab('comm')">
+                        <span class="nav-icon">💬</span>
+                        Quick Phrases
+                    </button>
+                    <button class="nav-item" onclick="switchTab('messages')">
+                        <span class="nav-icon">📧</span>
+                        Email & Messages
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">Control</div>
+                    <button class="nav-item" onclick="switchTab('smart')">
+                        <span class="nav-icon">🏠</span>
+                        Smart Home
+                    </button>
+                    <button class="nav-item" onclick="switchTab('media')">
+                        <span class="nav-icon">🎵</span>
+                        Media Player
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">Tools</div>
+                    <button class="nav-item" onclick="switchTab('browser')">
+                        <span class="nav-icon">🌐</span>
+                        Web Browser
+                    </button>
+                    <button class="nav-item" onclick="switchTab('phone')">
+                        <span class="nav-icon">📞</span>
+                        Phone Dialer
+                    </button>
+                    <button class="nav-item" onclick="switchTab('notes')">
+                        <span class="nav-icon">📝</span>
+                        Notes & Journal
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">System</div>
+                    <button class="nav-item" onclick="switchTab('settings')">
+                        <span class="nav-icon">⚙️</span>
+                        Settings
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Stage -->
+            <div id="stage">
+                <!-- Virtual Keyboard -->
+                <div class="stage-content active" id="keyboard-content">
+                    <div class="stage-header">
+                        <h1>⌨️ Virtual Keyboard</h1>
+                        <p>Type using only your eyes. Look at a key for 1 second to type it, or squint for instant input.</p>
+                    </div>
+
+                    <div class="keyboard">
+                        <div class="keyboard-output" id="keyboard-output">
+                            <span class="output-cursor"></span>
+                        </div>
+
+                        <div class="word-suggestions" id="word-suggestions">
+                            <div class="suggestion" onclick="addSuggestion(this)">and</div>
+                            <div class="suggestion" onclick="addSuggestion(this)">the</div>
+                            <div class="suggestion" onclick="addSuggestion(this)">you</div>
+                            <div class="suggestion" onclick="addSuggestion(this)">can</div>
+                        </div>
+
+                        <div class="keyboard-row">
+                            <div class="key" data-key="Q"><span>Q</span></div>
+                            <div class="key" data-key="W"><span>W</span></div>
+                            <div class="key" data-key="E"><span>E</span></div>
+                            <div class="key" data-key="R"><span>R</span></div>
+                            <div class="key" data-key="T"><span>T</span></div>
+                            <div class="key" data-key="Y"><span>Y</span></div>
+                            <div class="key" data-key="U"><span>U</span></div>
+                            <div class="key" data-key="I"><span>I</span></div>
+                            <div class="key" data-key="O"><span>O</span></div>
+                            <div class="key" data-key="P"><span>P</span></div>
+                        </div>
+
+                        <div class="keyboard-row">
+                            <div class="key" data-key="A"><span>A</span></div>
+                            <div class="key" data-key="S"><span>S</span></div>
+                            <div class="key" data-key="D"><span>D</span></div>
+                            <div class="key" data-key="F"><span>F</span></div>
+                            <div class="key" data-key="G"><span>G</span></div>
+                            <div class="key" data-key="H"><span>H</span></div>
+                            <div class="key" data-key="J"><span>J</span></div>
+                            <div class="key" data-key="K"><span>K</span></div>
+                            <div class="key" data-key="L"><span>L</span></div>
+                        </div>
+
+                        <div class="keyboard-row">
+                            <div class="key" data-key="Z"><span>Z</span></div>
+                            <div class="key" data-key="X"><span>X</span></div>
+                            <div class="key" data-key="C"><span>C</span></div>
+                            <div class="key" data-key="V"><span>V</span></div>
+                            <div class="key" data-key="B"><span>B</span></div>
+                            <div class="key" data-key="N"><span>N</span></div>
+                            <div class="key" data-key="M"><span>M</span></div>
+                            <div class="key special" data-key="."><span>.</span></div>
+                            <div class="key special" data-key=","><span>,</span></div>
+                            <div class="key special" data-key="?"><span>?</span></div>
+                        </div>
+
+                        <div class="keyboard-row">
+                            <div class="key special" data-key="CLEAR"><span>Clear</span></div>
+                            <div class="key space" data-key=" "><span>Space</span></div>
+                            <div class="key special" data-key="BACK"><span>← Back</span></div>
+                            <div class="key special" data-key="SPEAK"><span>🔊 Speak</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Communication Board -->
+                <div class="stage-content" id="comm-content">
+                    <div class="stage-header">
+                        <h1>💬 Quick Phrases</h1>
+                        <p>Communicate quickly with pre-set phrases. Voice output included.</p>
+                    </div>
+
+                    <div class="comm-board">
+                        <div class="comm-card" onclick="speak('Hello, how are you?')">
+                            <div class="comm-icon">👋</div>
+                            <div class="comm-text">Hello</div>
+                            <div class="comm-category">Greeting</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('Thank you very much')">
+                            <div class="comm-icon">🙏</div>
+                            <div class="comm-text">Thank You</div>
+                            <div class="comm-category">Gratitude</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I need help immediately')">
+                            <div class="comm-icon">🆘</div>
+                            <div class="comm-text">I Need Help</div>
+                            <div class="comm-category">Urgent</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('Yes')">
+                            <div class="comm-icon">✅</div>
+                            <div class="comm-text">Yes</div>
+                            <div class="comm-category">Response</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('No')">
+                            <div class="comm-icon">❌</div>
+                            <div class="comm-text">No</div>
+                            <div class="comm-category">Response</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I am hungry')">
+                            <div class="comm-icon">🍽️</div>
+                            <div class="comm-text">I'm Hungry</div>
+                            <div class="comm-category">Need</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I am thirsty')">
+                            <div class="comm-icon">💧</div>
+                            <div class="comm-text">I'm Thirsty</div>
+                            <div class="comm-category">Need</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I need to use the bathroom')">
+                            <div class="comm-icon">🚻</div>
+                            <div class="comm-text">Bathroom</div>
+                            <div class="comm-category">Need</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I am tired and need rest')">
+                            <div class="comm-icon">😴</div>
+                            <div class="comm-text">I'm Tired</div>
+                            <div class="comm-category">Feeling</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I am in pain')">
+                            <div class="comm-icon">🤕</div>
+                            <div class="comm-text">I'm in Pain</div>
+                            <div class="comm-category">Medical</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('Please wait a moment')">
+                            <div class="comm-icon">⏳</div>
+                            <div class="comm-text">Please Wait</div>
+                            <div class="comm-category">Request</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I love you')">
+                            <div class="comm-icon">❤️</div>
+                            <div class="comm-text">I Love You</div>
+                            <div class="comm-category">Emotion</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('Good morning')">
+                            <div class="comm-icon">🌅</div>
+                            <div class="comm-text">Good Morning</div>
+                            <div class="comm-category">Greeting</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('Good night')">
+                            <div class="comm-icon">🌙</div>
+                            <div class="comm-text">Good Night</div>
+                            <div class="comm-category">Greeting</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('How are you?')">
+                            <div class="comm-icon">💭</div>
+                            <div class="comm-text">How Are You?</div>
+                            <div class="comm-category">Question</div>
+                        </div>
+
+                        <div class="comm-card" onclick="speak('I am happy')">
+                            <div class="comm-icon">😊</div>
+                            <div class="comm-text">I'm Happy</div>
+                            <div class="comm-category">Feeling</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email & Messages -->
+                <div class="stage-content" id="messages-content">
+                    <div class="stage-header">
+                        <h1>📧 Email & Messages</h1>
+                        <p>Send messages and emails to your contacts with eye control.</p>
+                    </div>
+
+                    <div class="message-composer">
+                        <h3 style="margin-bottom: 20px;">Quick Contacts</h3>
+                        <div class="contact-grid">
+                            <div class="contact-card" onclick="selectContact(this, 'Family')">
+                                <div class="contact-avatar">👨‍👩‍👧‍👦</div>
+                                <div class="contact-name">Family</div>
+                            </div>
+                            <div class="contact-card" onclick="selectContact(this, 'Doctor')">
+                                <div class="contact-avatar">👨‍⚕️</div>
+                                <div class="contact-name">Doctor</div>
+                            </div>
+                            <div class="contact-card" onclick="selectContact(this, 'Caregiver')">
+                                <div class="contact-avatar">👨‍⚕️</div>
+                                <div class="contact-name">Caregiver</div>
+                            </div>
+                            <div class="contact-card" onclick="selectContact(this, 'Friend')">
+                                <div class="contact-avatar">👤</div>
+                                <div class="contact-name">Friend</div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">To:</label>
+                            <input type="text" class="form-input" id="message-to" placeholder="Select a contact above">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Subject:</label>
+                            <input type="text" class="form-input" id="message-subject" placeholder="Message subject">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Message:</label>
+                            <textarea class="form-input form-textarea" id="message-body" placeholder="Type your message..."></textarea>
+                        </div>
+
+                        <div style="display: flex; gap: 12px;">
+                            <button class="icon-btn" style="flex: 1;" onclick="sendMessage()">
+                                📤 Send Message
+                            </button>
+                            <button class="icon-btn" onclick="clearMessage()">
+                                🗑️ Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Smart Home -->
+                <div class="stage-content" id="smart-content">
+                    <div class="stage-header">
+                        <h1>🏠 Smart Home Control</h1>
+                        <p>Control your environment with your eyes. Adjust lights, temperature, and more.</p>
+                    </div>
+
+                    <div class="smart-grid">
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">💡</div>
+                                    <div>
+                                        <div class="smart-title">Living Room Lights</div>
+                                        <div class="smart-status" id="light-status">Off</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch" id="light-toggle" onclick="toggleLight()"></div>
+                            </div>
+                            <div class="control-group">
+                                <div class="control-label">Brightness</div>
+                                <div class="slider" onclick="adjustBrightness(event)">
+                                    <div class="slider-fill" id="brightness-fill" style="width: 60%"></div>
+                                </div>
+                                <div class="slider-value" id="brightness-value">60%</div>
+                            </div>
+                        </div>
+
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">🌡️</div>
+                                    <div>
+                                        <div class="smart-title">Temperature</div>
+                                        <div class="smart-status" id="temp-status">22°C</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch on" id="temp-toggle" onclick="toggleTemp()"></div>
+                            </div>
+                            <div class="control-group">
+                                <div class="control-label">Set Temperature</div>
+                                <div class="slider" onclick="adjustTemp(event)">
+                                    <div class="slider-fill" id="temp-fill" style="width: 55%"></div>
+                                </div>
+                                <div class="slider-value" id="temp-value">22°C</div>
+                            </div>
+                        </div>
+
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">📺</div>
+                                    <div>
+                                        <div class="smart-title">Television</div>
+                                        <div class="smart-status" id="tv-status">Off</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch" id="tv-toggle" onclick="toggleTV()"></div>
+                            </div>
+                            <div class="control-group">
+                                <div class="control-label">Volume</div>
+                                <div class="slider" onclick="adjustVolume(event)">
+                                    <div class="slider-fill" id="volume-fill" style="width: 40%"></div>
+                                </div>
+                                <div class="slider-value" id="volume-value">40%</div>
+                            </div>
+                        </div>
+
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">🪟</div>
+                                    <div>
+                                        <div class="smart-title">Window Blinds</div>
+                                        <div class="smart-status" id="blinds-status">Closed</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch" id="blinds-toggle" onclick="toggleBlinds()"></div>
+                            </div>
+                            <div class="control-group">
+                                <div class="control-label">Position</div>
+                                <div class="slider" onclick="adjustBlinds(event)">
+                                    <div class="slider-fill" id="blinds-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="slider-value" id="blinds-value">Closed</div>
+                            </div>
+                        </div>
+
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">🌬️</div>
+                                    <div>
+                                        <div class="smart-title">Air Purifier</div>
+                                        <div class="smart-status" id="purifier-status">Off</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch" id="purifier-toggle" onclick="togglePurifier()"></div>
+                            </div>
+                            <div class="control-group">
+                                <div class="control-label">Fan Speed</div>
+                                <div class="slider" onclick="adjustPurifier(event)">
+                                    <div class="slider-fill" id="purifier-fill" style="width: 50%"></div>
+                                </div>
+                                <div class="slider-value" id="purifier-value">Medium</div>
+                            </div>
+                        </div>
+
+                        <div class="smart-card">
+                            <div class="smart-header">
+                                <div class="smart-info">
+                                    <div class="smart-icon">🔒</div>
+                                    <div>
+                                        <div class="smart-title">Door Lock</div>
+                                        <div class="smart-status" id="lock-status">Locked</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-switch on" id="lock-toggle" onclick="toggleLock()"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Media Player -->
+                <div class="stage-content" id="media-content">
+                    <div class="stage-header">
+                        <h1>🎵 Media Player</h1>
+                        <p>Control your music and media playback with your eyes.</p>
+                    </div>
+
+                    <div class="media-player">
+                        <div class="album-art">🎵</div>
+                        
+                        <div class="track-info">
+                            <div class="track-title" id="track-title">Peaceful Journey</div>
+                            <div class="track-artist" id="track-artist">Calm Sounds Collection</div>
+                        </div>
+
+                        <div class="progress-bar" onclick="seekTrack(event)">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+
+                        <div class="time-labels">
+                            <span id="current-time">1:32</span>
+                            <span id="total-time">5:00</span>
+                        </div>
+
+                        <div class="media-controls">
+                            <div class="media-btn" onclick="previousTrack()">⏮️</div>
+                            <div class="media-btn play" id="play-btn" onclick="togglePlay()">▶️</div>
+                            <div class="media-btn" onclick="nextTrack()">⏭️</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Web Browser -->
+                <div class="stage-content" id="browser-content">
+                    <div class="stage-header">
+                        <h1>🌐 Web Browser</h1>
+                        <p>Navigate the web with eye control. Quick access to your favorite websites.</p>
+                    </div>
+
+                    <div class="browser-bar">
+                        <div class="browser-btn" onclick="browserBack()">◀️</div>
+                        <div class="browser-btn" onclick="browserForward()">▶️</div>
+                        <input type="text" class="form-input browser-input" placeholder="Enter website URL..." id="browser-url">
+                        <div class="browser-btn" onclick="browserGo()">🔍</div>
+                    </div>
+
+                    <h3 style="margin: 24px 0 16px;">Quick Access</h3>
+                    <div class="browser-shortcuts">
+                        <div class="shortcut-card" onclick="openWebsite('news')">
+                            <div class="shortcut-icon">📰</div>
+                            <div class="shortcut-name">News</div>
+                        </div>
+                        <div class="shortcut-card" onclick="openWebsite('weather')">
+                            <div class="shortcut-icon">🌤️</div>
+                            <div class="shortcut-name">Weather</div>
+                        </div>
+                        <div class="shortcut-card" onclick="openWebsite('email')">
+                            <div class="shortcut-icon">📧</div>
+                            <div class="shortcut-name">Email</div>
+                        </div>
+                        <div class="shortcut-card" onclick="openWebsite('social')">
+                            <div class="shortcut-icon">👥</div>
+                            <div class="shortcut-name">Social</div>
+                        </div>
+                        <div class="shortcut-card" onclick="openWebsite('video')">
+                            <div class="shortcut-icon">📺</div>
+                            <div class="shortcut-name">Videos</div>
+                        </div>
+                        <div class="shortcut-card" onclick="openWebsite('health')">
+                            <div class="shortcut-icon">🏥</div>
+                            <div class="shortcut-name">Health</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phone Dialer -->
+                <div class="stage-content" id="phone-content">
+                    <div class="stage-header">
+                        <h1>📞 Phone Dialer</h1>
+                        <p>Make calls using eye control. Perfect for hands-free communication.</p>
+                    </div>
+
+                    <div style="max-width: 500px; margin: 0 auto;">
+                        <div class="dialer-display" id="dialer-display"></div>
+
+                        <div class="dialer-pad">
+                            <div class="dial-btn" onclick="dialNumber('1')">1</div>
+                            <div class="dial-btn" onclick="dialNumber('2')">2</div>
+                            <div class="dial-btn" onclick="dialNumber('3')">3</div>
+                            <div class="dial-btn" onclick="dialNumber('4')">4</div>
+                            <div class="dial-btn" onclick="dialNumber('5')">5</div>
+                            <div class="dial-btn" onclick="dialNumber('6')">6</div>
+                            <div class="dial-btn" onclick="dialNumber('7')">7</div>
+                            <div class="dial-btn" onclick="dialNumber('8')">8</div>
+                            <div class="dial-btn" onclick="dialNumber('9')">9</div>
+                            <div class="dial-btn" onclick="dialNumber('*')">*</div>
+                            <div class="dial-btn" onclick="dialNumber('0')">0</div>
+                            <div class="dial-btn" onclick="dialNumber('#')">#</div>
+                        </div>
+
+                        <div class="call-actions">
+                            <div class="call-btn call" onclick="makeCall()">📞</div>
+                            <div class="call-btn" onclick="clearDialer()">⌫</div>
+                            <div class="call-btn end" onclick="endCall()">📵</div>
+                        </div>
+
+                        <h3 style="margin: 32px 0 16px; text-align: center;">Quick Contacts</h3>
+                        <div class="contact-grid">
+                            <div class="contact-card" onclick="quickDial('Emergency')">
+                                <div class="contact-avatar">🚨</div>
+                                <div class="contact-name">Emergency</div>
+                            </div>
+                            <div class="contact-card" onclick="quickDial('Family')">
+                                <div class="contact-avatar">👨‍👩‍👧‍👦</div>
+                                <div class="contact-name">Family</div>
+                            </div>
+                            <div class="contact-card" onclick="quickDial('Doctor')">
+                                <div class="contact-avatar">👨‍⚕️</div>
+                                <div class="contact-name">Doctor</div>
+                            </div>
+                            <div class="contact-card" onclick="quickDial('Caregiver')">
+                                <div class="contact-avatar">👨‍⚕️</div>
+                                <div class="contact-name">Caregiver</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes & Journal -->
+                <div class="stage-content" id="notes-content">
+                    <div class="stage-header">
+                        <h1>📝 Notes & Journal</h1>
+                        <p>Keep track of thoughts, reminders, and daily entries.</p>
+                    </div>
+
+                    <button class="icon-btn" style="margin-bottom: 20px;" onclick="createNewNote()">
+                        ➕ Create New Note
+                    </button>
+
+                    <div class="notes-list">
+                        <div class="note-card" onclick="openNote(this)">
+                            <div class="note-header">
+                                <div class="note-title">Daily Thoughts</div>
+                                <div class="note-date">Today</div>
+                            </div>
+                            <div class="note-content">
+                                Feeling grateful for the support from my family. The new eye tracking system is making communication so much easier...
+                            </div>
+                        </div>
+
+                        <div class="note-card" onclick="openNote(this)">
+                            <div class="note-header">
+                                <div class="note-title">Medication Reminder</div>
+                                <div class="note-date">Yesterday</div>
+                            </div>
+                            <div class="note-content">
+                                Remember to take medication at 8 AM and 8 PM daily. Doctor appointment scheduled for next week.
+                            </div>
+                        </div>
+
+                        <div class="note-card" onclick="openNote(this)">
+                            <div class="note-header">
+                                <div class="note-title">Shopping List</div>
+                                <div class="note-date">2 days ago</div>
+                            </div>
+                            <div class="note-content">
+                                Groceries needed: milk, bread, eggs, fruits, vegetables. Also need to restock on medical supplies.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings -->
+                <div class="stage-content" id="settings-content">
+                    <div class="stage-header">
+                        <h1>⚙️ Settings</h1>
+                        <p>Customize your eye tracking experience for optimal comfort and control.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Click Method</div>
+                            </div>
+                            <div class="setting-description">
+                                Choose how you want to activate items on screen
+                            </div>
+                            <div class="setting-options">
+                                <button class="option-btn" onclick="setClickMethod('dwell', this)">
+                                    Dwell Only
+                                </button>
+                                <button class="option-btn" onclick="setClickMethod('squint', this)">
+                                    Squint Only
+                                </button>
+                                <button class="option-btn selected" onclick="setClickMethod('both', this)">
+                                    Both
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Dwell Time</div>
+                            </div>
+                            <div class="setting-description">
+                                How long to look at an item before it activates
+                            </div>
+                            <div class="setting-options">
+                                <button class="option-btn" onclick="setDwellTime(500, this)">
+                                    Fast (0.5s)
+                                </button>
+                                <button class="option-btn selected" onclick="setDwellTime(1000, this)">
+                                    Normal (1s)
+                                </button>
+                                <button class="option-btn" onclick="setDwellTime(1500, this)">
+                                    Slow (1.5s)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Cursor Speed</div>
+                            </div>
+                            <div class="setting-description">
+                                Adjust how fast the cursor follows your gaze
+                            </div>
+                            <div class="setting-control">
+                                <div class="slider" onclick="adjustCursorSpeed(event)">
+                                    <div class="slider-fill" id="speed-fill" style="width: 50%"></div>
+                                </div>
+                                <div class="slider-value" id="speed-value">Medium</div>
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Smoothing</div>
+                            </div>
+                            <div class="setting-description">
+                                Reduce jitter by smoothing cursor movement
+                            </div>
+                            <div class="setting-control">
+                                <div class="slider" onclick="adjustSmoothing(event)">
+                                    <div class="slider-fill" id="smoothing-fill" style="width: 60%"></div>
+                                </div>
+                                <div class="slider-value" id="smoothing-value">60%</div>
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Voice Feedback</div>
+                                <div class="toggle-switch on" id="voice-toggle" onclick="toggleVoice()"></div>
+                            </div>
+                            <div class="setting-description">
+                                Speak text out loud from keyboard and communication board
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Sound Effects</div>
+                                <div class="toggle-switch on" id="sound-toggle" onclick="toggleSound()"></div>
+                            </div>
+                            <div class="setting-description">
+                                Play sounds when clicking and interacting with elements
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">High Contrast Mode</div>
+                                <div class="toggle-switch" id="contrast-toggle" onclick="toggleContrast()"></div>
+                            </div>
+                            <div class="setting-description">
+                                Increase visual contrast for better visibility
+                            </div>
+                        </div>
+
+                        <div class="setting-card">
+                            <div class="setting-header">
+                                <div class="setting-title">Cursor Size</div>
+                            </div>
+                            <div class="setting-description">
+                                Adjust the size of the eye tracking cursor
+                            </div>
+                            <div class="setting-options">
+                                <button class="option-btn" onclick="setCursorSize('small', this)">
+                                    Small
+                                </button>
+                                <button class="option-btn selected" onclick="setCursorSize('medium', this)">
+                                    Medium
+                                </button>
+                                <button class="option-btn" onclick="setCursorSize('large', this)">
+                                    Large
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Navigation -->
+        <div id="mobile-nav">
+            <div class="mobile-nav-grid">
+                <button class="mobile-nav-item active" onclick="switchTab('keyboard')">
+                    <span class="nav-icon">⌨️</span>
+                    Keyboard
+                </button>
+                <button class="mobile-nav-item" onclick="switchTab('comm')">
+                    <span class="nav-icon">💬</span>
+                    Phrases
+                </button>
+                <button class="mobile-nav-item" onclick="switchTab('smart')">
+                    <span class="nav-icon">🏠</span>
+                    Home
+                </button>
+                <button class="mobile-nav-item" onclick="switchTab('media')">
+                    <span class="nav-icon">🎵</span>
+                    Media
+                </button>
+                <button class="mobile-nav-item" onclick="switchTab('settings')">
+                    <span class="nav-icon">⚙️</span>
+                    Settings
+                </button>
+            </div>
+        </div>
     </div>
+
+    <!-- Emergency Button -->
+    <div id="emergency-btn" onclick="emergency()">🚨</div>
 
 <script>
-    // --- CONFIGURATION ---
+    // === CONFIGURATION ===
     const CONFIG = {
-        SENSITIVITY_X: 2.5,  // Multiplier for horizontal movement
-        SENSITIVITY_Y: 3.5,  // Multiplier for vertical movement
-        SMOOTHING: 0.15,     // 0.1 = super smooth/slow, 0.9 = instant/jittery
-        SQUINT_THRESH: 0.22, // Below this ratio = click
-        BLINK_THRESH: 0.12,  // Below this = blink (ignore or handle differently)
-        CLICK_COOLDOWN: 800  // ms between clicks
+        SENSITIVITY_X: 2.5,
+        SENSITIVITY_Y: 3.5,
+        SMOOTHING: 0.15,
+        SQUINT_THRESH: 0.22,
+        BLINK_THRESH: 0.12,
+        CLICK_COOLDOWN: 800,
+        DWELL_TIME: 1000,
     };
 
-    // --- STATE ---
+    // === STATE ===
     let state = {
         cursorX: window.innerWidth / 2,
         cursorY: window.innerHeight / 2,
@@ -214,49 +2522,27 @@
         targetY: window.innerHeight / 2,
         isSquinting: false,
         lastClickTime: 0,
-        score: 0,
-        gameActive: false,
-        videoWidth: 0,
-        videoHeight: 0
+        dwellElement: null,
+        dwellStartTime: 0,
+        dwellEnabled: true,
+        squintEnabled: true,
+        voiceEnabled: true,
+        soundEnabled: true,
+        isPlaying: false,
+        currentProgress: 30,
+        keyboardText: '',
+        dialerNumber: '',
     };
 
-    // Offset calibration
-    let calibrationOffset = { pitch: 0, yaw: 0 };
-
-    // --- ELEMENTS ---
+    // === ELEMENTS ===
     const cursor = document.getElementById('gaze-cursor');
-    const squintVal = document.getElementById('squint-val');
-    const xVal = document.getElementById('x-val');
-    const yVal = document.getElementById('y-val');
+    const dwellRing = document.getElementById('dwell-ring');
     const videoElement = document.getElementById('input-video');
-    const gameLayer = document.getElementById('game-layer');
-    const gameTarget = document.getElementById('target');
-    const scoreDisplay = document.getElementById('score');
 
-    // --- POPULATE DEMO CONTENT ---
-    const grid = document.getElementById('demo-grid');
-    for(let i=1; i<=12; i++) {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `<h3>Data Node ${i}</h3><p>Squint to Access</p>`;
-        card.onclick = () => {
-            card.style.background = '#00f3ff';
-            card.style.color = '#000';
-            setTimeout(() => {
-                card.style.background = '';
-                card.style.color = '';
-            }, 500);
-        };
-        grid.appendChild(card);
-    }
-
-    // --- MATH HELPERS ---
-    function lerp(start, end, amt) {
-        return (1 - amt) * start + amt * end;
-    }
-
-    // --- MEDIA PIPE SETUP ---
-    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    // === MEDIAPIPE SETUP ===
+    const faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
     
     faceMesh.setOptions({
         maxNumFaces: 1,
@@ -274,16 +2560,13 @@
     });
     camera.start();
 
-    // --- MAIN LOOP ---
+    // === MAIN TRACKING LOOP ===
     function onResults(results) {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
 
         const landmarks = results.multiFaceLandmarks[0];
 
-        // 1. CALCULATE SQUINT (Eye Aspect Ratio)
-        // Left Eye: 159 (top), 145 (bottom), 33 (inner), 133 (outer)
-        // Right Eye: 386 (top), 374 (bottom), 362 (inner), 263 (outer)
-        
+        // Calculate squint
         const leftH = getDist(landmarks[159], landmarks[145]);
         const leftW = getDist(landmarks[33], landmarks[133]);
         const rightH = getDist(landmarks[386], landmarks[374]);
@@ -293,67 +2576,51 @@
         const ratioR = rightH / rightW;
         const avgRatio = (ratioL + ratioR) / 2;
 
-        squintVal.innerText = avgRatio.toFixed(3);
-
-        // 2. DETECT CLICK (SQUINT)
+        // Detect squint click
         const now = Date.now();
         const isSquintingNow = avgRatio < CONFIG.SQUINT_THRESH && avgRatio > CONFIG.BLINK_THRESH;
 
-        if (isSquintingNow && !state.isSquinting && (now - state.lastClickTime > CONFIG.CLICK_COOLDOWN)) {
-            // ACTION: CLICK
+        if (state.squintEnabled && isSquintingNow && !state.isSquinting && 
+            (now - state.lastClickTime > CONFIG.CLICK_COOLDOWN)) {
             state.lastClickTime = now;
             triggerClick();
         }
         
         state.isSquinting = isSquintingNow;
 
-        // 3. CALCULATE CURSOR POSITION (Head Pose + Iris Hybrid)
-        // If squinting, LOCK cursor (don't move it, so click is precise)
+        // Calculate cursor position
         if (!state.isSquinting) {
-            
-            // Use Face Center (1) and dimensions to estimate pose
-            // This is a simplified head-mouse logic which is much more stable than pure eye-gaze on webcams
             const faceX = landmarks[1].x;
             const faceY = landmarks[1].y;
             
-            // Flip X because webcam is mirrored
             const rawX = 1 - faceX; 
             const rawY = faceY;
 
-            // Apply sensitivity and offset
-            // We map the center of the face (0.5) to center of screen
-            // Deviation from 0.5 moves the cursor
-            const deltaX = (rawX - 0.5 - calibrationOffset.yaw) * CONFIG.SENSITIVITY_X;
-            const deltaY = (rawY - 0.5 - calibrationOffset.pitch) * CONFIG.SENSITIVITY_Y;
+            const deltaX = (rawX - 0.5) * CONFIG.SENSITIVITY_X;
+            const deltaY = (rawY - 0.5) * CONFIG.SENSITIVITY_Y;
 
             state.targetX = (0.5 + deltaX) * window.innerWidth;
             state.targetY = (0.5 + deltaY) * window.innerHeight;
 
-            // Clamp to screen
             state.targetX = Math.max(0, Math.min(window.innerWidth, state.targetX));
             state.targetY = Math.max(0, Math.min(window.innerHeight, state.targetY));
-        } else {
-            // Visual feedback for locking
-            cursor.classList.add('clicking');
         }
 
-        if (!state.isSquinting) cursor.classList.remove('clicking');
-
-        // 4. SMOOTHING (LERP)
+        // Smoothing
         state.cursorX = lerp(state.cursorX, state.targetX, CONFIG.SMOOTHING);
         state.cursorY = lerp(state.cursorY, state.targetY, CONFIG.SMOOTHING);
 
-        // Update DOM
+        // Update cursor position
         cursor.style.left = `${state.cursorX}px`;
         cursor.style.top = `${state.cursorY}px`;
-        
-        // Debug Values
-        xVal.innerText = Math.round(state.cursorX);
-        yVal.innerText = Math.round(state.cursorY);
 
-        // Game Logic Check
-        if (state.gameActive && state.isSquinting) {
-            checkGameHit();
+        // Update position display
+        document.getElementById('x-pos').textContent = Math.round(state.cursorX);
+        document.getElementById('y-pos').textContent = Math.round(state.cursorY);
+
+        // Dwell detection
+        if (state.dwellEnabled) {
+            handleDwell();
         }
     }
 
@@ -361,81 +2628,539 @@
         return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
 
-    // --- ACTIONS ---
+    function lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+    }
 
-    function triggerClick() {
-        cursor.classList.add('clicking');
-        
-        // Create actual click event at cursor position
+    // === DWELL DETECTION ===
+    function handleDwell() {
         const elem = document.elementFromPoint(state.cursorX, state.cursorY);
-        if (elem) {
-            elem.click();
-            // visual ripple?
+        
+        if (!elem || elem.id === 'gaze-cursor' || elem.id === 'dwell-ring') {
+            resetDwell();
+            return;
+        }
+
+        const isClickable = elem.onclick || 
+                           elem.tagName === 'BUTTON' || 
+                           elem.classList.contains('key') ||
+                           elem.classList.contains('comm-card') ||
+                           elem.classList.contains('toggle-switch') ||
+                           elem.classList.contains('slider') ||
+                           elem.classList.contains('media-btn') ||
+                           elem.classList.contains('dial-btn') ||
+                           elem.classList.contains('contact-card') ||
+                           elem.classList.contains('shortcut-card') ||
+                           elem.classList.contains('option-btn') ||
+                           elem.classList.contains('suggestion') ||
+                           elem.classList.contains('call-btn');
+
+        if (isClickable) {
+            if (state.dwellElement !== elem) {
+                state.dwellElement = elem;
+                state.dwellStartTime = Date.now();
+            } else {
+                const dwellDuration = Date.now() - state.dwellStartTime;
+                const progress = Math.min(dwellDuration / CONFIG.DWELL_TIME, 1);
+                
+                dwellRing.style.transform = `rotate(${progress * 360 - 90}deg)`;
+                cursor.classList.add('dwelling');
+
+                if (dwellDuration >= CONFIG.DWELL_TIME) {
+                    triggerClick();
+                    resetDwell();
+                }
+            }
+        } else {
+            resetDwell();
+        }
+    }
+
+    function resetDwell() {
+        state.dwellElement = null;
+        state.dwellStartTime = 0;
+        dwellRing.style.transform = 'rotate(-90deg)';
+        cursor.classList.remove('dwelling');
+    }
+
+    // === CLICK TRIGGER ===
+    function triggerClick() {
+        const elem = document.elementFromPoint(state.cursorX, state.cursorY);
+        if (elem && (elem.onclick || elem.tagName === 'BUTTON')) {
+            if (state.soundEnabled) playClickSound();
+            
+            // Create ripple effect
             const ripple = document.createElement('div');
-            ripple.style.position = 'fixed';
+            ripple.className = 'click-ripple';
             ripple.style.left = state.cursorX + 'px';
             ripple.style.top = state.cursorY + 'px';
-            ripple.style.width = '10px';
-            ripple.style.height = '10px';
-            ripple.style.background = 'rgba(255, 255, 255, 0.5)';
-            ripple.style.borderRadius = '50%';
-            ripple.style.transform = 'translate(-50%, -50%)';
-            ripple.style.transition = 'all 0.5s';
             document.body.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
             
-            setTimeout(() => {
-                ripple.style.width = '100px';
-                ripple.style.height = '100px';
-                ripple.style.opacity = '0';
-            }, 10);
-            setTimeout(() => ripple.remove(), 510);
+            elem.click();
+            
+            cursor.classList.add('clicking');
+            setTimeout(() => cursor.classList.remove('clicking'), 200);
         }
-
-        setTimeout(() => cursor.classList.remove('clicking'), 200);
     }
 
-    function recenterCursor() {
-        // We assume the user is looking at the center of the screen NOW.
-        // We capture the current face coordinates and set them as the "zero" point.
-        // Note: We need the raw landmarks for this, but we can approximate by reversing the current calculation
-        // Or simpler: Just tell user to look at center and reset state
-        alert("Look at the center of the screen and close this alert.");
-        // In a real app, we would snapshot the current faceX/faceY here.
-        // For this demo, we'll just reset the cursor to center visually.
+    // === UI FUNCTIONS ===
+    function closeTutorial() {
+        document.getElementById('tutorial-overlay').classList.remove('active');
+    }
+
+    function showTutorial() {
+        document.getElementById('tutorial-overlay').classList.add('active');
+    }
+
+    function switchTab(tabName) {
+        // Update desktop nav
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const navItem = Array.from(document.querySelectorAll('.nav-item'))
+            .find(item => item.onclick && item.onclick.toString().includes(tabName));
+        if (navItem) navItem.classList.add('active');
+
+        // Update mobile nav
+        document.querySelectorAll('.mobile-nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const mobileItem = Array.from(document.querySelectorAll('.mobile-nav-item'))
+            .find(item => item.onclick && item.onclick.toString().includes(tabName));
+        if (mobileItem) mobileItem.classList.add('active');
+
+        // Update content
+        document.querySelectorAll('.stage-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}-content`).classList.add('active');
+    }
+
+    function toggleDwell() {
+        state.dwellEnabled = !state.dwellEnabled;
+        const btn = document.getElementById('dwell-toggle');
+        btn.classList.toggle('active');
+        showNotification('Dwell Click', state.dwellEnabled ? 'Enabled' : 'Disabled', 'info');
+    }
+
+    function toggleSquint() {
+        state.squintEnabled = !state.squintEnabled;
+        const btn = document.getElementById('squint-toggle');
+        btn.classList.toggle('active');
+        showNotification('Squint Click', state.squintEnabled ? 'Enabled' : 'Disabled', 'info');
+    }
+
+    function recalibrate() {
+        showNotification('Calibration', 'Look at the center of the screen', 'success');
         state.cursorX = window.innerWidth / 2;
         state.cursorY = window.innerHeight / 2;
+        state.targetX = window.innerWidth / 2;
+        state.targetY = window.innerHeight / 2;
     }
 
-    // --- GAME ENGINE ---
-    function toggleGame() {
-        state.gameActive = !state.gameActive;
-        gameLayer.style.display = state.gameActive ? 'block' : 'none';
-        if (state.gameActive) moveTarget();
+    // === KEYBOARD ===
+    document.querySelectorAll('.key').forEach(key => {
+        key.onclick = function() {
+            const keyValue = this.getAttribute('data-key');
+            const output = document.getElementById('keyboard-output');
+            
+            if (keyValue === 'BACK') {
+                state.keyboardText = state.keyboardText.slice(0, -1);
+            } else if (keyValue === 'CLEAR') {
+                state.keyboardText = '';
+            } else if (keyValue === 'SPEAK') {
+                speak(state.keyboardText);
+                return;
+            } else {
+                state.keyboardText += keyValue;
+            }
+            
+            output.innerHTML = state.keyboardText + '<span class="output-cursor"></span>';
+        };
+    });
+
+    function addSuggestion(elem) {
+        state.keyboardText += (state.keyboardText ? ' ' : '') + elem.textContent;
+        const output = document.getElementById('keyboard-output');
+        output.innerHTML = state.keyboardText + '<span class="output-cursor"></span>';
     }
 
-    function moveTarget() {
-        const x = Math.random() * (window.innerWidth - 100) + 50;
-        const y = Math.random() * (window.innerHeight - 100) + 50;
-        gameTarget.style.left = `${x}px`;
-        gameTarget.style.top = `${y}px`;
-    }
-
-    function checkGameHit() {
-        const rect = gameTarget.getBoundingClientRect();
-        const cx = rect.left + rect.width/2;
-        const cy = rect.top + rect.height/2;
+    // === SPEECH ===
+    function speak(text) {
+        if (!state.voiceEnabled || !text) return;
         
-        const dist = Math.hypot(state.cursorX - cx, state.cursorY - cy);
-        
-        if (dist < 50) { // Hit radius
-            state.score++;
-            scoreDisplay.innerText = `Score: ${state.score}`;
-            gameTarget.style.background = '#fff';
-            setTimeout(() => gameTarget.style.background = 'var(--alert)', 100);
-            moveTarget();
+        if ('speechSynthesis' in window) {
+            speechSynthesis.cancel(); // Cancel any ongoing speech
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            speechSynthesis.speak(utterance);
+            showNotification('Speaking', text.length > 50 ? text.substring(0, 50) + '...' : text, 'success');
         }
     }
 
+    // === MESSAGING ===
+    function selectContact(elem, name) {
+        document.querySelectorAll('.contact-card').forEach(c => c.classList.remove('selected'));
+        elem.classList.add('selected');
+        document.getElementById('message-to').value = name;
+    }
+
+    function sendMessage() {
+        const to = document.getElementById('message-to').value;
+        const subject = document.getElementById('message-subject').value;
+        const body = document.getElementById('message-body').value;
+        
+        if (!to || !body) {
+            showNotification('Error', 'Please select a contact and write a message', 'info');
+            return;
+        }
+        
+        showNotification('Message Sent', `Your message to ${to} has been sent`, 'success');
+        speak(`Message sent to ${to}`);
+        clearMessage();
+    }
+
+    function clearMessage() {
+        document.getElementById('message-to').value = '';
+        document.getElementById('message-subject').value = '';
+        document.getElementById('message-body').value = '';
+        document.querySelectorAll('.contact-card').forEach(c => c.classList.remove('selected'));
+    }
+
+    // === SMART HOME ===
+    function toggleLight() {
+        const toggle = document.getElementById('light-toggle');
+        const status = document.getElementById('light-status');
+        toggle.classList.toggle('on');
+        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
+        showNotification('Living Room Lights', status.textContent, 'success');
+    }
+
+    function adjustBrightness(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('brightness-fill').style.width = percent + '%';
+        document.getElementById('brightness-value').textContent = percent + '%';
+    }
+
+    function toggleTemp() {
+        const toggle = document.getElementById('temp-toggle');
+        toggle.classList.toggle('on');
+        showNotification('Climate Control', toggle.classList.contains('on') ? 'On' : 'Off', 'success');
+    }
+
+    function adjustTemp(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = ((event.clientX - rect.left) / rect.width);
+        const temp = Math.round(16 + (percent * 14));
+        document.getElementById('temp-fill').style.width = (percent * 100) + '%';
+        document.getElementById('temp-value').textContent = temp + '°C';
+        document.getElementById('temp-status').textContent = temp + '°C';
+    }
+
+    function toggleTV() {
+        const toggle = document.getElementById('tv-toggle');
+        const status = document.getElementById('tv-status');
+        toggle.classList.toggle('on');
+        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
+        showNotification('Television', status.textContent, 'success');
+    }
+
+    function adjustVolume(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('volume-fill').style.width = percent + '%';
+        document.getElementById('volume-value').textContent = percent + '%';
+    }
+
+    function toggleBlinds() {
+        const toggle = document.getElementById('blinds-toggle');
+        const status = document.getElementById('blinds-status');
+        toggle.classList.toggle('on');
+        status.textContent = toggle.classList.contains('on') ? 'Open' : 'Closed';
+        const fill = document.getElementById('blinds-fill');
+        fill.style.width = toggle.classList.contains('on') ? '100%' : '0%';
+        document.getElementById('blinds-value').textContent = status.textContent;
+        showNotification('Window Blinds', status.textContent, 'success');
+    }
+
+    function adjustBlinds(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('blinds-fill').style.width = percent + '%';
+        document.getElementById('blinds-value').textContent = percent === 0 ? 'Closed' : 
+                                                             percent === 100 ? 'Open' : 
+                                                             percent + '% Open';
+    }
+
+    function togglePurifier() {
+        const toggle = document.getElementById('purifier-toggle');
+        const status = document.getElementById('purifier-status');
+        toggle.classList.toggle('on');
+        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
+        showNotification('Air Purifier', status.textContent, 'success');
+    }
+
+    function adjustPurifier(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = ((event.clientX - rect.left) / rect.width);
+        const speeds = ['Low', 'Medium', 'High'];
+        const index = Math.floor(percent * 3);
+        const speed = speeds[Math.min(index, 2)];
+        document.getElementById('purifier-fill').style.width = (percent * 100) + '%';
+        document.getElementById('purifier-value').textContent = speed;
+    }
+
+    function toggleLock() {
+        const toggle = document.getElementById('lock-toggle');
+        const status = document.getElementById('lock-status');
+        toggle.classList.toggle('on');
+        status.textContent = toggle.classList.contains('on') ? 'Locked' : 'Unlocked';
+        showNotification('Door Lock', status.textContent, status.textContent === 'Locked' ? 'success' : 'info');
+    }
+
+    // === MEDIA PLAYER ===
+    function togglePlay() {
+        state.isPlaying = !state.isPlaying;
+        document.getElementById('play-btn').textContent = state.isPlaying ? '⏸️' : '▶️';
+        showNotification('Media Player', state.isPlaying ? 'Playing' : 'Paused', 'success');
+    }
+
+    function previousTrack() {
+        showNotification('Media Player', 'Previous Track', 'success');
+    }
+
+    function nextTrack() {
+        showNotification('Media Player', 'Next Track', 'success');
+    }
+
+    function seekTrack(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('progress-fill').style.width = percent + '%';
+    }
+
+    // === BROWSER ===
+    function browserBack() {
+        showNotification('Browser', 'Going back', 'info');
+    }
+
+    function browserForward() {
+        showNotification('Browser', 'Going forward', 'info');
+    }
+
+    function browserGo() {
+        const url = document.getElementById('browser-url').value;
+        if (url) {
+            showNotification('Browser', `Navigating to ${url}`, 'info');
+        }
+    }
+
+    function openWebsite(type) {
+        const sites = {
+            'news': 'News Website',
+            'weather': 'Weather Forecast',
+            'email': 'Email Service',
+            'social': 'Social Media',
+            'video': 'Video Platform',
+            'health': 'Health Portal'
+        };
+        showNotification('Opening', sites[type], 'success');
+    }
+
+    // === PHONE ===
+    function dialNumber(num) {
+        state.dialerNumber += num;
+        document.getElementById('dialer-display').textContent = state.dialerNumber;
+    }
+
+    function clearDialer() {
+        state.dialerNumber = state.dialerNumber.slice(0, -1);
+        document.getElementById('dialer-display').textContent = state.dialerNumber;
+    }
+
+    function makeCall() {
+        if (state.dialerNumber) {
+            showNotification('Calling', state.dialerNumber, 'success');
+            speak(`Calling ${state.dialerNumber}`);
+        }
+    }
+
+    function endCall() {
+        showNotification('Call Ended', '', 'info');
+        state.dialerNumber = '';
+        document.getElementById('dialer-display').textContent = '';
+    }
+
+    function quickDial(contact) {
+        showNotification('Quick Dial', `Calling ${contact}`, 'success');
+        speak(`Calling ${contact}`);
+    }
+
+    // === NOTES ===
+    function createNewNote() {
+        showNotification('Notes', 'Creating new note', 'success');
+    }
+
+    function openNote(elem) {
+        const title = elem.querySelector('.note-title').textContent;
+        showNotification('Opening Note', title, 'info');
+    }
+
+    // === SETTINGS ===
+    function setClickMethod(method, elem) {
+        document.querySelectorAll('.option-btn').forEach(btn => {
+            if (btn.parentElement === elem.parentElement) {
+                btn.classList.remove('selected');
+            }
+        });
+        elem.classList.add('selected');
+        
+        if (method === 'dwell') {
+            state.dwellEnabled = true;
+            state.squintEnabled = false;
+        } else if (method === 'squint') {
+            state.dwellEnabled = false;
+            state.squintEnabled = true;
+        } else {
+            state.dwellEnabled = true;
+            state.squintEnabled = true;
+        }
+        
+        showNotification('Click Method', `Set to ${method}`, 'success');
+    }
+
+    function setDwellTime(time, elem) {
+        document.querySelectorAll('.option-btn').forEach(btn => {
+            if (btn.parentElement === elem.parentElement) {
+                btn.classList.remove('selected');
+            }
+        });
+        elem.classList.add('selected');
+        CONFIG.DWELL_TIME = time;
+        showNotification('Dwell Time', `Set to ${time}ms`, 'success');
+    }
+
+    function adjustCursorSpeed(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('speed-fill').style.width = percent + '%';
+        
+        const speeds = ['Very Slow', 'Slow', 'Medium', 'Fast', 'Very Fast'];
+        const index = Math.floor((percent / 100) * speeds.length);
+        document.getElementById('speed-value').textContent = speeds[Math.min(index, speeds.length - 1)];
+        
+        CONFIG.SENSITIVITY_X = 1 + (percent / 100) * 3;
+        CONFIG.SENSITIVITY_Y = 1.5 + (percent / 100) * 3.5;
+    }
+
+    function adjustSmoothing(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        document.getElementById('smoothing-fill').style.width = percent + '%';
+        document.getElementById('smoothing-value').textContent = percent + '%';
+        
+        CONFIG.SMOOTHING = 0.05 + (percent / 100) * 0.3;
+    }
+
+    function toggleVoice() {
+        state.voiceEnabled = !state.voiceEnabled;
+        document.getElementById('voice-toggle').classList.toggle('on');
+        showNotification('Voice Feedback', state.voiceEnabled ? 'Enabled' : 'Disabled', 'info');
+    }
+
+    function toggleSound() {
+        state.soundEnabled = !state.soundEnabled;
+        document.getElementById('sound-toggle').classList.toggle('on');
+        showNotification('Sound Effects', state.soundEnabled ? 'Enabled' : 'Disabled', 'info');
+    }
+
+    function toggleContrast() {
+        const toggle = document.getElementById('contrast-toggle');
+        toggle.classList.toggle('on');
+        document.body.style.filter = toggle.classList.contains('on') ? 'contrast(1.2)' : '';
+        showNotification('High Contrast', toggle.classList.contains('on') ? 'Enabled' : 'Disabled', 'info');
+    }
+
+    function setCursorSize(size, elem) {
+        document.querySelectorAll('.option-btn').forEach(btn => {
+            if (btn.parentElement === elem.parentElement) {
+                btn.classList.remove('selected');
+            }
+        });
+        elem.classList.add('selected');
+        
+        const sizes = { small: '28px', medium: '36px', large: '48px' };
+        cursor.style.width = sizes[size];
+        cursor.style.height = sizes[size];
+        showNotification('Cursor Size', `Set to ${size}`, 'success');
+    }
+
+    // === EMERGENCY ===
+    function emergency() {
+        const message = "EMERGENCY! I need immediate assistance right now!";
+        speak(message);
+        showNotification('🚨 EMERGENCY ALERT', 'Help request sent to all contacts', 'success');
+        
+        // Flash effect
+        let flashCount = 0;
+        const flashInterval = setInterval(() => {
+            document.body.style.background = flashCount % 2 === 0 ? '#F44336' : '';
+            flashCount++;
+            if (flashCount >= 6) clearInterval(flashInterval);
+        }, 200);
+    }
+
+    // === NOTIFICATIONS ===
+    function showNotification(title, message, type = 'success') {
+        // Remove existing notification
+        const existing = document.querySelector('.notification');
+        if (existing) existing.remove();
+        
+        const notif = document.createElement('div');
+        notif.className = `notification ${type}`;
+        const icon = type === 'success' ? '✅' : type === 'info' ? 'ℹ️' : '⚠️';
+        notif.innerHTML = `
+            <div class="notification-header">
+                <div class="notification-icon">${icon}</div>
+                <div class="notification-title">${title}</div>
+            </div>
+            ${message ? `<div class="notification-message">${message}</div>` : ''}
+        `;
+        document.body.appendChild(notif);
+        
+        setTimeout(() => {
+            notif.style.opacity = '0';
+            notif.style.transform = 'translateX(500px)';
+            setTimeout(() => notif.remove(), 400);
+        }, 3000);
+    }
+
+    // === SOUND EFFECTS ===
+    function playClickSound() {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 1000;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.08);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.08);
+        } catch(e) {
+            // Audio context not available
+        }
+    }
 </script>
 </body>
 </html>
