@@ -3,1400 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AccessGaze Pro - Eye Tracking for Accessibility</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-
+    <title>Sign Language - Word Recognition</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+            -webkit-tap-highlight-color: transparent;
         }
-
-        :root {
-            --primary: #4A90E2;
-            --primary-light: #6BA8F5;
-            --primary-dark: #357ABD;
-            --success: #4CAF50;
-            --warning: #FF9800;
-            --danger: #F44336;
-            --info: #00BCD4;
-            --bg: #F5F7FA;
-            --surface: #FFFFFF;
-            --text: #2C3E50;
-            --text-light: #7F8C8D;
-            --border: #E1E8ED;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --header-height: 140px;
-        }
-
+        
         body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            overflow: hidden;
-            cursor: none;
+            background: #0a0a0a;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
-
-        /* === GAZE CURSOR === */
-        #gaze-cursor {
-            position: fixed;
-            width: 36px;
-            height: 36px;
-            border: 3px solid var(--primary);
-            border-radius: 50%;
-            pointer-events: none;
-            transform: translate(-50%, -50%);
-            z-index: 10000;
-            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 20px var(--primary), 0 0 40px rgba(74, 144, 226, 0.3);
-            animation: pulse-cursor 2s infinite;
+        
+        .bg-dark {
+            background: #111111;
         }
-
-        @keyframes pulse-cursor {
-            0%, 100% { box-shadow: 0 0 20px var(--primary), 0 0 40px rgba(74, 144, 226, 0.3); }
-            50% { box-shadow: 0 0 30px var(--primary), 0 0 60px rgba(74, 144, 226, 0.5); }
+        
+        .bg-darker {
+            background: #0d0d0d;
         }
-
-        #gaze-cursor::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 10px;
-            height: 10px;
-            background: var(--primary);
-            transform: translate(-50%, -50%);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--primary);
+        
+        .card {
+            background: linear-gradient(145deg, #1a1a1a, #151515);
+            border: 1px solid #252525;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
-
-        #gaze-cursor.clicking {
-            background: rgba(74, 144, 226, 0.4);
-            transform: translate(-50%, -50%) scale(1.4);
-            box-shadow: 0 0 40px var(--primary), 0 0 80px rgba(74, 144, 226, 0.6);
-        }
-
-        /* Dwell progress ring */
-        #dwell-ring {
-            position: absolute;
-            top: -4px;
-            left: -4px;
-            right: -4px;
-            bottom: -4px;
-            border-radius: 50%;
-            border: 4px solid transparent;
-            border-top-color: var(--success);
-            border-right-color: var(--success);
-            transform: rotate(-90deg);
-            transition: transform 0.05s linear;
-            opacity: 0;
-        }
-
-        #gaze-cursor.dwelling #dwell-ring {
-            opacity: 1;
-        }
-
-        /* Click ripple effect */
-        .click-ripple {
-            position: fixed;
-            border: 3px solid var(--primary);
-            border-radius: 50%;
-            pointer-events: none;
-            transform: translate(-50%, -50%);
-            animation: ripple 0.6s ease-out forwards;
-            z-index: 9999;
-        }
-
-        @keyframes ripple {
-            from {
-                width: 20px;
-                height: 20px;
-                opacity: 1;
-            }
-            to {
-                width: 100px;
-                height: 100px;
-                opacity: 0;
-            }
-        }
-
-        /* === MAIN LAYOUT === */
-        #app-container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        /* Header */
-        #header {
-            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
-            border-bottom: 2px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            z-index: 100;
-            box-shadow: 0 4px 12px var(--shadow);
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 22px;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .logo-icon {
-            width: 42px;
-            height: 42px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-        }
-
-        /* Camera Feed */
-        #camera-container {
-            position: relative;
-            width: 180px;
-            height: 135px;
-            background: #000;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 3px solid var(--border);
-            box-shadow: 0 4px 16px var(--shadow);
+        
+        .card-hover {
             transition: all 0.3s ease;
         }
-
-        #camera-container:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 24px var(--shadow);
+        
+        .card-hover:active {
+            transform: scale(0.98);
         }
-
-        #input-video {
+        
+        #videoContainer {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            overflow: hidden;
+        }
+        
+        #video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             transform: scaleX(-1);
         }
-
-        .camera-status {
+        
+        #canvas {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(8px);
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--success);
-            animation: pulse-dot 2s infinite;
-            box-shadow: 0 0 8px var(--success);
-        }
-
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(0.9); }
-        }
-
-        .camera-stats {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(8px);
-            color: #fff;
-            padding: 6px 8px;
-            border-radius: 6px;
-            font-size: 10px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        /* Control buttons */
-        .header-controls {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .icon-btn {
-            background: var(--surface);
-            border: 2px solid var(--border);
-            color: var(--text);
-            padding: 10px 18px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 2px 8px var(--shadow);
-        }
-
-        .icon-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
-        }
-
-        .icon-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
-        }
-
-        /* === MAIN CONTENT === */
-        #main-content {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            overflow: hidden;
-        }
-
-        /* Sidebar Navigation */
-        #sidebar {
-            background: var(--surface);
-            border-right: 2px solid var(--border);
-            padding: 24px;
-            overflow-y: auto;
-            box-shadow: 2px 0 12px var(--shadow);
-        }
-
-        .nav-section {
-            margin-bottom: 32px;
-        }
-
-        .nav-title {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: var(--text-light);
-            margin-bottom: 12px;
-            letter-spacing: 1px;
-            padding-left: 4px;
-        }
-
-        .nav-item {
-            background: transparent;
-            border: none;
-            color: var(--text);
-            padding: 14px 18px;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            width: 100%;
-            text-align: left;
-            margin-bottom: 6px;
-            position: relative;
-        }
-
-        .nav-item::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 4px;
-            height: 0;
-            background: var(--primary);
-            border-radius: 0 4px 4px 0;
-            transition: height 0.3s ease;
-        }
-
-        .nav-item:hover {
-            background: var(--bg);
-            transform: translateX(4px);
-        }
-
-        .nav-item:hover::before {
-            height: 60%;
-        }
-
-        .nav-item.active {
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-        }
-
-        .nav-item.active::before {
-            height: 100%;
-            background: white;
-        }
-
-        .nav-icon {
-            font-size: 22px;
-            width: 28px;
-            text-align: center;
-        }
-
-        /* Main Stage */
-        #stage {
-            padding: 32px;
-            overflow-y: auto;
-            background: var(--bg);
-        }
-
-        #stage::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        #stage::-webkit-scrollbar-track {
-            background: var(--bg);
-        }
-
-        #stage::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 5px;
-        }
-
-        #stage::-webkit-scrollbar-thumb:hover {
-            background: var(--text-light);
-        }
-
-        .stage-content {
-            display: none;
-            max-width: 1400px;
-            animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .stage-content.active {
-            display: block;
-        }
-
-        @keyframes fadeInUp {
-            from { 
-                opacity: 0; 
-                transform: translateY(20px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0); 
-            }
-        }
-
-        .stage-header {
-            margin-bottom: 32px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .stage-header h1 {
-            font-size: 36px;
-            color: var(--text);
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
-
-        .stage-header p {
-            font-size: 17px;
-            color: var(--text-light);
-            line-height: 1.6;
-        }
-
-        /* === VIRTUAL KEYBOARD === */
-        .keyboard {
-            background: var(--surface);
-            padding: 28px;
-            border-radius: 20px;
-            box-shadow: 0 8px 32px var(--shadow);
-        }
-
-        .keyboard-output {
-            background: linear-gradient(135deg, #fafbfc 0%, var(--bg) 100%);
-            border: 3px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
-            min-height: 140px;
-            font-size: 26px;
-            margin-bottom: 24px;
-            word-wrap: break-word;
-            position: relative;
-            line-height: 1.5;
-            font-weight: 500;
-            box-shadow: inset 0 2px 8px var(--shadow);
-        }
-
-        .output-cursor {
-            display: inline-block;
-            width: 3px;
-            height: 32px;
-            background: var(--primary);
-            animation: blink 1s infinite;
-            vertical-align: middle;
-            margin-left: 2px;
-        }
-
-        @keyframes blink {
-            0%, 49% { opacity: 1; }
-            50%, 100% { opacity: 0; }
-        }
-
-        .word-suggestions {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .suggestion {
-            background: var(--primary-light);
-            color: white;
-            padding: 10px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-        }
-
-        .suggestion:hover {
-            background: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-        }
-
-        .keyboard-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-            justify-content: center;
-        }
-
-        .key {
-            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
-            border: 2px solid var(--border);
-            color: var(--text);
-            min-width: 58px;
-            height: 58px;
-            border-radius: 12px;
-            font-size: 20px;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            box-shadow: 0 2px 8px var(--shadow);
-        }
-
-        .key::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary-light), var(--primary));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .key:hover::before {
-            opacity: 1;
-        }
-
-        .key:hover {
-            color: white;
-            border-color: var(--primary);
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
-        }
-
-        .key span {
-            position: relative;
-            z-index: 1;
-        }
-
-        .key.special {
-            background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .key.space {
-            flex: 1;
-            min-width: 250px;
-        }
-
-        /* === COMMUNICATION BOARD === */
-        .comm-board {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 20px;
-        }
-
-        .comm-card {
-            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
-            border: 3px solid var(--border);
-            border-radius: 16px;
-            padding: 28px;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            text-align: center;
-            box-shadow: 0 4px 16px var(--shadow);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .comm-card::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, var(--primary-light), var(--primary));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .comm-card:hover::before {
-            opacity: 0.1;
-        }
-
-        .comm-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 12px 32px rgba(74, 144, 226, 0.3);
-        }
-
-        .comm-card > * {
-            position: relative;
-            z-index: 1;
-        }
-
-        .comm-icon {
-            font-size: 56px;
-            margin-bottom: 14px;
-            filter: drop-shadow(0 4px 8px var(--shadow));
-        }
-
-        .comm-text {
-            font-size: 19px;
-            font-weight: 700;
-            color: var(--text);
-            margin-bottom: 6px;
-        }
-
-        .comm-category {
-            font-size: 12px;
-            color: var(--text-light);
-            text-transform: uppercase;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-
-        /* === SMART HOME === */
-        .smart-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 24px;
-        }
-
-        .smart-card {
-            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
-            border: 3px solid var(--border);
-            border-radius: 20px;
-            padding: 28px;
-            box-shadow: 0 6px 24px var(--shadow);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .smart-card:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 12px 40px var(--shadow);
-            border-color: var(--primary-light);
-        }
-
-        .smart-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .smart-info {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-
-        .smart-icon {
-            font-size: 36px;
-            filter: drop-shadow(0 2px 8px var(--shadow));
-        }
-
-        .smart-title {
-            font-size: 19px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .smart-status {
-            font-size: 13px;
-            color: var(--text-light);
-            font-weight: 500;
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 64px;
-            height: 32px;
-            background: #d1d8e0;
-            border-radius: 16px;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .toggle-switch.on {
-            background: linear-gradient(135deg, var(--success), #66BB6A);
-        }
-
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: white;
-            top: 2px;
-            left: 2px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-
-        .toggle-switch.on::after {
-            left: 34px;
-        }
-
-        .control-group {
-            margin-top: 20px;
-        }
-
-        .control-label {
-            font-size: 14px;
-            color: var(--text-light);
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .slider {
-            width: 100%;
-            height: 10px;
-            background: var(--bg);
-            border-radius: 5px;
-            position: relative;
-            cursor: pointer;
-            box-shadow: inset 0 1px 3px var(--shadow);
-        }
-
-        .slider-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--primary-light));
-            border-radius: 5px;
-            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
-        }
-
-        .slider-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--primary);
-            margin-top: 10px;
-        }
-
-        /* === MEDIA PLAYER === */
-        .media-player {
-            background: linear-gradient(135deg, var(--surface) 0%, #fafbfc 100%);
-            border-radius: 24px;
-            padding: 40px;
-            box-shadow: 0 12px 48px var(--shadow);
-            max-width: 650px;
-            margin: 0 auto;
-            border: 3px solid var(--border);
-        }
-
-        .album-art {
-            width: 100%;
-            aspect-ratio: 1;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            border-radius: 20px;
-            margin-bottom: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 96px;
-            box-shadow: 0 8px 32px rgba(74, 144, 226, 0.3);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .album-art::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
-            animation: shine 3s infinite;
-        }
-
-        @keyframes shine {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        .track-info {
-            text-align: center;
-            margin-bottom: 28px;
-        }
-
-        .track-title {
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        .track-artist {
-            font-size: 18px;
-            color: var(--text-light);
-            font-weight: 500;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: var(--bg);
-            border-radius: 4px;
-            margin-bottom: 12px;
-            position: relative;
-            cursor: pointer;
-            box-shadow: inset 0 1px 3px var(--shadow);
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--primary-light));
-            border-radius: 4px;
-            width: 30%;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 10px rgba(74, 144, 226, 0.4);
-        }
-
-        .time-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-            color: var(--text-light);
-            margin-bottom: 32px;
-            font-weight: 600;
-        }
-
-        .media-controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 24px;
-        }
-
-        .media-btn {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            border: 3px solid var(--border);
-            background: var(--surface);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 16px var(--shadow);
-        }
-
-        .media-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-            transform: scale(1.15);
-            box-shadow: 0 8px 24px rgba(74, 144, 226, 0.4);
-        }
-
-        .media-btn.play {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            border-color: var(--primary);
-            font-size: 36px;
-            box-shadow: 0 8px 24px rgba(74, 144, 226, 0.4);
-        }
-
-        .media-btn.play:hover {
-            transform: scale(1.2);
-        }
-
-        /* === EMAIL/MESSAGES === */
-        .message-composer {
-            background: var(--surface);
-            border: 3px solid var(--border);
-            border-radius: 20px;
-            padding: 28px;
-            box-shadow: 0 6px 24px var(--shadow);
-            margin-bottom: 24px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 700;
-            color: var(--text);
-            margin-bottom: 10px;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 14px 18px;
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            font-size: 16px;
-            font-family: inherit;
-            transition: all 0.3s ease;
-            background: var(--bg);
-        }
-
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
-        }
-
-        .form-textarea {
-            min-height: 150px;
-            resize: vertical;
-        }
-
-        .contact-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .contact-card {
-            background: var(--surface);
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .contact-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px var(--shadow);
-        }
-
-        .contact-card.selected {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        .contact-avatar {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary-light), var(--primary));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            margin: 0 auto 12px;
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-        }
-
-        .contact-name {
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        /* === WEB BROWSER === */
-        .browser-bar {
-            background: var(--surface);
-            border: 2px solid var(--border);
-            border-radius: 16px;
-            padding: 16px;
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 16px var(--shadow);
-        }
-
-        .browser-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            border: 2px solid var(--border);
-            background: var(--surface);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 18px;
-            transition: all 0.3s ease;
-        }
-
-        .browser-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        .browser-input {
-            flex: 1;
-        }
-
-        .browser-shortcuts {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 16px;
-        }
-
-        .shortcut-card {
-            background: var(--surface);
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .shortcut-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px var(--shadow);
-        }
-
-        .shortcut-icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-
-        .shortcut-name {
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        /* === PHONE DIALER === */
-        .dialer-display {
-            background: linear-gradient(135deg, #fafbfc 0%, var(--bg) 100%);
-            border: 3px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
-            font-size: 36px;
-            text-align: center;
-            margin-bottom: 24px;
-            min-height: 80px;
-            font-weight: 700;
-            letter-spacing: 2px;
-        }
-
-        .dialer-pad {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            max-width: 400px;
-            margin: 0 auto 24px;
-        }
-
-        .dial-btn {
-            aspect-ratio: 1;
-            background: var(--surface);
-            border: 3px solid var(--border);
-            border-radius: 50%;
-            font-size: 32px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 16px var(--shadow);
-        }
-
-        .dial-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-            transform: scale(1.1);
-        }
-
-        .call-actions {
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-        }
-
-        .call-btn {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            border: none;
-            font-size: 36px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 6px 20px var(--shadow);
-        }
-
-        .call-btn.call {
-            background: linear-gradient(135deg, var(--success), #66BB6A);
-            color: white;
-        }
-
-        .call-btn.end {
-            background: linear-gradient(135deg, var(--danger), #EF5350);
-            color: white;
-        }
-
-        .call-btn:hover {
-            transform: scale(1.15);
-        }
-
-        /* === NOTES === */
-        .notes-list {
-            display: grid;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .note-card {
-            background: var(--surface);
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px var(--shadow);
-        }
-
-        .note-card:hover {
-            border-color: var(--primary);
-            transform: translateX(4px);
-            box-shadow: 0 6px 20px var(--shadow);
-        }
-
-        .note-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 12px;
-        }
-
-        .note-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text);
-        }
-
-        .note-date {
-            font-size: 12px;
-            color: var(--text-light);
-        }
-
-        .note-content {
-            color: var(--text-light);
-            line-height: 1.6;
-        }
-
-        /* === SETTINGS === */
-        .settings-grid {
-            display: grid;
-            gap: 24px;
-        }
-
-        .setting-card {
-            background: var(--surface);
-            border: 3px solid var(--border);
-            border-radius: 16px;
-            padding: 28px;
-            box-shadow: 0 4px 16px var(--shadow);
-            transition: all 0.3s ease;
-        }
-
-        .setting-card:hover {
-            border-color: var(--primary-light);
-            box-shadow: 0 8px 24px var(--shadow);
-        }
-
-        .setting-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 16px;
-        }
-
-        .setting-title {
-            font-size: 19px;
-            font-weight: 700;
-        }
-
-        .setting-description {
-            color: var(--text-light);
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        .setting-control {
-            margin-top: 20px;
-        }
-
-        .setting-options {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .option-btn {
-            padding: 14px;
-            background: var(--bg);
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .option-btn:hover {
-            border-color: var(--primary);
-            background: var(--surface);
-        }
-
-        .option-btn.selected {
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
-        }
-
-        /* === TUTORIAL OVERLAY === */
-        #tutorial-overlay {
-            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(10px);
-            z-index: 9999;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            transform: scaleX(-1);
         }
-
-        #tutorial-overlay.active {
-            display: flex;
+        
+        .word-badge {
+            animation: wordPop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
         }
-
-        .tutorial-box {
-            background: var(--surface);
-            border-radius: 24px;
-            padding: 48px;
-            max-width: 680px;
-            text-align: center;
-            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
-            animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        
+        @keyframes wordPop {
+            0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+            50% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
-
-        @keyframes scaleIn {
+        
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .glow {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+        }
+        
+        .btn {
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn:active {
+            transform: scale(0.95);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #7c3aed, #4f46e5);
+        }
+        
+        .btn-secondary {
+            background: #1f1f1f;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .btn-secondary:hover {
+            background: #252525;
+            border-color: #333;
+        }
+        
+        .scroll-container {
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        
+        .scroll-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
+        
+        .word-chip {
+            background: linear-gradient(135deg, #1e1e1e, #181818);
+            border: 1px solid #2a2a2a;
+            transition: all 0.2s ease;
+        }
+        
+        .word-chip:active {
+            background: linear-gradient(135deg, #252525, #1f1f1f);
+        }
+        
+        .gesture-card {
+            background: #161616;
+            border: 1px solid #222;
+            transition: all 0.2s ease;
+        }
+        
+        .gesture-card:active {
+            background: #1a1a1a;
+            border-color: #8b5cf6;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #141414 100%);
+            border-left: 3px solid #8b5cf6;
+        }
+        
+        @keyframes slideIn {
             from {
-                opacity: 0;
-                transform: scale(0.9);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-
-        .tutorial-box h2 {
-            font-size: 32px;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .tutorial-box > p {
-            font-size: 17px;
-            line-height: 1.8;
-            color: var(--text-light);
-            margin-bottom: 32px;
-        }
-
-        .tutorial-steps {
-            text-align: left;
-            margin: 32px 0;
-        }
-
-        .tutorial-step {
-            display: flex;
-            align-items: start;
-            gap: 18px;
-            margin-bottom: 20px;
-            padding: 20px;
-            background: var(--bg);
-            border-radius: 16px;
-            transition: all 0.3s ease;
-        }
-
-        .tutorial-step:hover {
-            background: var(--surface);
-            box-shadow: 0 4px 16px var(--shadow);
-        }
-
-        .step-number {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 18px;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
-        }
-
-        .step-text {
-            flex: 1;
-        }
-
-        .step-text strong {
-            display: block;
-            font-size: 16px;
-            margin-bottom: 4px;
-            color: var(--text);
-        }
-
-        .tutorial-btn {
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            border: none;
-            padding: 18px 48px;
-            border-radius: 14px;
-            font-size: 17px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
-        }
-
-        .tutorial-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(74, 144, 226, 0.5);
-        }
-
-        /* === EMERGENCY BUTTON === */
-        #emergency-btn {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            width: 88px;
-            height: 88px;
-            background: linear-gradient(135deg, var(--danger), #EF5350);
-            color: white;
-            border: 4px solid white;
-            border-radius: 50%;
-            font-size: 36px;
-            cursor: pointer;
-            box-shadow: 0 8px 32px rgba(244, 67, 54, 0.5);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: emergency-pulse 2s infinite;
-        }
-
-        @keyframes emergency-pulse {
-            0%, 100% {
-                box-shadow: 0 8px 32px rgba(244, 67, 54, 0.5);
-            }
-            50% {
-                box-shadow: 0 12px 48px rgba(244, 67, 54, 0.7);
-            }
-        }
-
-        #emergency-btn:hover {
-            transform: scale(1.15);
-            box-shadow: 0 12px 40px rgba(244, 67, 54, 0.7);
-        }
-
-        /* === NOTIFICATION === */
-        .notification {
-            position: fixed;
-            top: 160px;
-            right: 32px;
-            background: var(--surface);
-            border: 3px solid var(--border);
-            border-radius: 16px;
-            padding: 20px 24px;
-            box-shadow: 0 12px 40px var(--shadow);
-            z-index: 9998;
-            animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            max-width: 360px;
-        }
-
-        @keyframes slideInRight {
-            from {
-                transform: translateX(500px);
+                transform: translateX(100%);
                 opacity: 0;
             }
             to {
@@ -1404,1763 +169,903 @@
                 opacity: 1;
             }
         }
-
-        .notification.success {
-            border-color: var(--success);
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
         }
-
-        .notification.info {
-            border-color: var(--info);
-        }
-
-        .notification-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 10px;
-        }
-
-        .notification-icon {
-            font-size: 28px;
-        }
-
-        .notification-title {
-            font-weight: 700;
-            font-size: 16px;
-        }
-
-        .notification-message {
-            color: var(--text-light);
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        /* === MOBILE BOTTOM NAV === */
-        #mobile-nav {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: var(--surface);
-            border-top: 2px solid var(--border);
-            padding: 10px;
-            z-index: 200;
-            box-shadow: 0 -4px 20px var(--shadow);
-        }
-
-        .mobile-nav-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 4px;
-        }
-
-        .mobile-nav-item {
-            background: transparent;
-            border: none;
-            padding: 10px 4px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            font-size: 10px;
-            color: var(--text-light);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .mobile-nav-item .nav-icon {
-            font-size: 24px;
-        }
-
-        .mobile-nav-item.active {
-            background: var(--primary);
-            color: white;
-        }
-
-        /* === RESPONSIVE === */
-        @media (max-width: 968px) {
-            :root {
-                --header-height: 120px;
-            }
-
-            #header {
-                flex-wrap: wrap;
-                padding: 12px;
-                gap: 12px;
-            }
-
-            .logo {
-                font-size: 18px;
-            }
-
-            .logo-icon {
-                width: 36px;
-                height: 36px;
-                font-size: 20px;
-            }
-
-            #camera-container {
-                width: 140px;
-                height: 105px;
-            }
-
-            .header-controls {
-                width: 100%;
-                justify-content: space-between;
-            }
-
-            .icon-btn {
-                flex: 1;
-                font-size: 12px;
-                padding: 8px 12px;
-                min-width: 0;
-            }
-
-            .icon-btn span {
-                display: none;
-            }
-
-            #main-content {
-                grid-template-columns: 1fr;
-                padding-bottom: 70px;
-            }
-
-            #sidebar {
-                display: none;
-            }
-
-            #mobile-nav {
-                display: block;
-            }
-
-            #stage {
-                padding: 20px;
-            }
-
-            .stage-header h1 {
-                font-size: 26px;
-            }
-
-            .stage-header p {
-                font-size: 14px;
-            }
-
-            .keyboard {
-                padding: 16px;
-            }
-
-            .keyboard-output {
-                font-size: 20px;
-                min-height: 100px;
-                padding: 16px;
-            }
-
-            .keyboard-row {
-                gap: 6px;
-            }
-
-            .key {
-                min-width: 42px;
-                height: 42px;
-                font-size: 16px;
-            }
-
-            .key.space {
-                min-width: 150px;
-            }
-
-            .comm-board {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 12px;
-            }
-
-            .comm-card {
-                padding: 20px;
-            }
-
-            .comm-icon {
-                font-size: 44px;
-            }
-
-            .comm-text {
-                font-size: 16px;
-            }
-
-            .smart-grid {
-                grid-template-columns: 1fr;
-                gap: 16px;
-            }
-
-            .media-player {
-                padding: 24px;
-            }
-
-            .album-art {
-                font-size: 72px;
-            }
-
-            .track-title {
-                font-size: 22px;
-            }
-
-            .media-btn {
-                width: 56px;
-                height: 56px;
-                font-size: 24px;
-            }
-
-            .media-btn.play {
-                width: 68px;
-                height: 68px;
-                font-size: 30px;
-            }
-
-            #emergency-btn {
-                width: 68px;
-                height: 68px;
-                font-size: 28px;
-                bottom: 90px;
-                right: 20px;
-            }
-
-            #gaze-cursor {
-                width: 44px;
-                height: 44px;
-            }
-
-            .tutorial-box {
-                padding: 32px;
-            }
-
-            .tutorial-box h2 {
-                font-size: 24px;
-            }
-
-            .tutorial-box > p {
-                font-size: 14px;
-            }
-
-            .notification {
-                right: 12px;
-                left: 12px;
-                max-width: none;
-                top: 140px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .comm-board {
-                grid-template-columns: 1fr;
-            }
-
-            .keyboard-row {
-                gap: 4px;
-            }
-
-            .key {
-                min-width: 36px;
-                height: 36px;
-                font-size: 14px;
-            }
-
-            .dialer-pad {
-                gap: 12px;
-            }
-
-            .contact-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
     </style>
 </head>
-<body>
-
-    <!-- Gaze Cursor -->
-    <div id="gaze-cursor">
-        <div id="dwell-ring"></div>
-    </div>
-
-    <!-- Tutorial Overlay -->
-    <div id="tutorial-overlay" class="active">
-        <div class="tutorial-box">
-            <h2>👁️ Welcome to AccessGaze Pro</h2>
-            <p>Advanced eye tracking technology designed to enhance independence, communication, and control for everyone.</p>
-            
-            <div class="tutorial-steps">
-                <div class="tutorial-step">
-                    <div class="step-number">1</div>
-                    <div class="step-text">
-                        <strong>Position yourself</strong>
-                        Sit comfortably 40-60cm from your camera with good lighting on your face
-                    </div>
-                </div>
-                <div class="tutorial-step">
-                    <div class="step-number">2</div>
-                    <div class="step-text">
-                        <strong>Control with your gaze</strong>
-                        Move your head/eyes to control the glowing blue cursor on screen
-                    </div>
-                </div>
-                <div class="tutorial-step">
-                    <div class="step-number">3</div>
-                    <div class="step-text">
-                        <strong>Click by dwelling or squinting</strong>
-                        Look at a button for 1 second (dwell) or squint both eyes to activate it
-                    </div>
-                </div>
-                <div class="tutorial-step">
-                    <div class="step-number">4</div>
-                    <div class="step-text">
-                        <strong>Emergency button</strong>
-                        The red button (bottom-right) sends instant help alerts
-                    </div>
-                </div>
-            </div>
-
-            <button class="tutorial-btn" onclick="closeTutorial()">Get Started 🚀</button>
-        </div>
-    </div>
-
-    <!-- Main App -->
-    <div id="app-container">
+<body class="text-white">
+    <div class="max-w-7xl mx-auto px-4 py-4 md:py-6">
         <!-- Header -->
-        <div id="header">
-            <div class="logo">
-                <div class="logo-icon">👁️</div>
-                <span>AccessGaze Pro</span>
-            </div>
-
-            <div id="camera-container">
-                <video id="input-video" playsinline muted autoplay></video>
-                <div class="camera-status">
-                    <div class="status-dot"></div>
-                    <span>TRACKING</span>
+        <div class="card rounded-2xl p-4 md:p-6 mb-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl md:text-4xl font-bold gradient-text mb-1">
+                        Sign Language
+                    </h1>
+                    <p class="text-gray-400 text-sm md:text-base">One gesture, one word - instant speech</p>
                 </div>
-                <div class="camera-stats">
-                    <span>X: <span id="x-pos">0</span></span>
-                    <span>Y: <span id="y-pos">0</span></span>
-                </div>
-            </div>
-
-            <div class="header-controls">
-                <button class="icon-btn" onclick="showTutorial()">
-                    <span>📖</span> Tutorial
-                </button>
-                <button class="icon-btn active" id="dwell-toggle" onclick="toggleDwell()">
-                    <span>⏱️</span> Dwell
-                </button>
-                <button class="icon-btn active" id="squint-toggle" onclick="toggleSquint()">
-                    <span>👁️</span> Squint
-                </button>
-                <button class="icon-btn" onclick="recalibrate()">
-                    <span>🎯</span> Calibrate
+                <button id="menuBtn" class="btn btn-secondary p-3 rounded-xl">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
                 </button>
             </div>
         </div>
 
-        <!-- Main Content -->
-        <div id="main-content">
-            <!-- Sidebar Navigation -->
-            <div id="sidebar">
-                <div class="nav-section">
-                    <div class="nav-title">Communication</div>
-                    <button class="nav-item active" onclick="switchTab('keyboard')">
-                        <span class="nav-icon">⌨️</span>
-                        Virtual Keyboard
-                    </button>
-                    <button class="nav-item" onclick="switchTab('comm')">
-                        <span class="nav-icon">💬</span>
-                        Quick Phrases
-                    </button>
-                    <button class="nav-item" onclick="switchTab('messages')">
-                        <span class="nav-icon">📧</span>
-                        Email & Messages
-                    </button>
+        <div class="grid lg:grid-cols-3 gap-4">
+            <!-- Main Camera Section -->
+            <div class="lg:col-span-2 space-y-4">
+                <!-- Video Feed -->
+                <div class="card rounded-2xl overflow-hidden">
+                    <div id="videoContainer" class="relative">
+                        <video id="video" autoplay playsinline muted></video>
+                        <canvas id="canvas"></canvas>
+                        
+                        <!-- Status Indicator -->
+                        <div class="absolute top-3 right-3 bg-black bg-opacity-60 backdrop-blur-sm px-3 py-2 rounded-full flex items-center gap-2">
+                            <div id="statusDot" class="w-2 h-2 rounded-full bg-red-500"></div>
+                            <span id="statusText" class="text-xs font-medium">Ready</span>
+                        </div>
+                        
+                        <!-- Current Word Display -->
+                        <div id="currentWord" class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black via-black to-transparent hidden">
+                            <div class="text-center">
+                                <div class="text-sm text-gray-400 mb-2">Detected</div>
+                                <div class="text-5xl md:text-7xl font-bold word-badge" id="wordDisplay">-</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Gesture Hint -->
+                        <div id="gestureHint" class="absolute top-3 left-3 bg-purple-600 bg-opacity-20 backdrop-blur-sm px-4 py-2 rounded-xl border border-purple-500 border-opacity-30">
+                            <div class="text-xs text-purple-300">👋 Show a gesture</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Camera Controls -->
+                    <div class="p-4 bg-darker border-t border-gray-800">
+                        <div class="flex gap-2">
+                            <button id="startBtn" class="btn btn-primary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base">
+                                📸 Start Camera
+                            </button>
+                            <button id="stopBtn" class="btn btn-secondary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base opacity-50" disabled>
+                                ⏸️ Stop
+                            </button>
+                            <button id="flipBtn" class="btn btn-secondary p-3 rounded-xl" disabled>
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="nav-section">
-                    <div class="nav-title">Control</div>
-                    <button class="nav-item" onclick="switchTab('smart')">
-                        <span class="nav-icon">🏠</span>
-                        Smart Home
-                    </button>
-                    <button class="nav-item" onclick="switchTab('media')">
-                        <span class="nav-icon">🎵</span>
-                        Media Player
-                    </button>
+                <!-- Sentence Builder -->
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg md:text-xl font-bold">Your Sentence</h2>
+                        <div class="flex gap-2">
+                            <button id="speakBtn" class="btn btn-secondary px-4 py-2 rounded-lg text-sm font-medium" disabled>
+                                🔊 Speak
+                            </button>
+                            <button id="clearSentenceBtn" class="btn btn-secondary px-4 py-2 rounded-lg text-sm font-medium">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="sentenceDisplay" class="bg-darker rounded-xl p-4 min-h-[80px] text-lg md:text-2xl font-medium border border-gray-800 mb-4">
+                        <span class="text-gray-500">Start signing to build your sentence...</span>
+                    </div>
+                    
+                    <!-- Quick Actions -->
+                    <div class="flex gap-2 overflow-x-auto pb-2 scroll-container">
+                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="copyToClipboard()">
+                            📋 Copy
+                        </button>
+                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="shareText()">
+                            📤 Share
+                        </button>
+                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="downloadText()">
+                            💾 Save
+                        </button>
+                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="translateText()">
+                            🌐 Translate
+                        </button>
+                    </div>
                 </div>
 
-                <div class="nav-section">
-                    <div class="nav-title">Tools</div>
-                    <button class="nav-item" onclick="switchTab('browser')">
-                        <span class="nav-icon">🌐</span>
-                        Web Browser
-                    </button>
-                    <button class="nav-item" onclick="switchTab('phone')">
-                        <span class="nav-icon">📞</span>
-                        Phone Dialer
-                    </button>
-                    <button class="nav-item" onclick="switchTab('notes')">
-                        <span class="nav-icon">📝</span>
-                        Notes & Journal
-                    </button>
-                </div>
-
-                <div class="nav-section">
-                    <div class="nav-title">System</div>
-                    <button class="nav-item" onclick="switchTab('settings')">
-                        <span class="nav-icon">⚙️</span>
-                        Settings
-                    </button>
+                <!-- Quick Phrases -->
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <h2 class="text-lg font-bold mb-3">Quick Phrases</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('Good morning')">
+                            ☀️ Good morning
+                        </button>
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('Thank you')">
+                            🙏 Thank you
+                        </button>
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('I need help')">
+                            🆘 I need help
+                        </button>
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('How are you?')">
+                            💭 How are you?
+                        </button>
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('See you later')">
+                            👋 See you later
+                        </button>
+                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('I love you')">
+                            ❤️ I love you
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Main Stage -->
-            <div id="stage">
-                <!-- Virtual Keyboard -->
-                <div class="stage-content active" id="keyboard-content">
-                    <div class="stage-header">
-                        <h1>⌨️ Virtual Keyboard</h1>
-                        <p>Type using only your eyes. Look at a key for 1 second to type it, or squint for instant input.</p>
-                    </div>
-
-                    <div class="keyboard">
-                        <div class="keyboard-output" id="keyboard-output">
-                            <span class="output-cursor"></span>
+            <!-- Sidebar -->
+            <div class="space-y-4">
+                <!-- Statistics -->
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <h2 class="text-lg font-bold mb-4">Session Stats</h2>
+                    <div class="space-y-3">
+                        <div class="stat-card p-3 rounded-lg">
+                            <div class="text-2xl font-bold gradient-text" id="wordCount">0</div>
+                            <div class="text-xs text-gray-400 mt-1">Words Detected</div>
                         </div>
-
-                        <div class="word-suggestions" id="word-suggestions">
-                            <div class="suggestion" onclick="addSuggestion(this)">and</div>
-                            <div class="suggestion" onclick="addSuggestion(this)">the</div>
-                            <div class="suggestion" onclick="addSuggestion(this)">you</div>
-                            <div class="suggestion" onclick="addSuggestion(this)">can</div>
+                        <div class="stat-card p-3 rounded-lg">
+                            <div class="text-2xl font-bold text-green-400" id="accuracy">100%</div>
+                            <div class="text-xs text-gray-400 mt-1">Accuracy</div>
                         </div>
-
-                        <div class="keyboard-row">
-                            <div class="key" data-key="Q"><span>Q</span></div>
-                            <div class="key" data-key="W"><span>W</span></div>
-                            <div class="key" data-key="E"><span>E</span></div>
-                            <div class="key" data-key="R"><span>R</span></div>
-                            <div class="key" data-key="T"><span>T</span></div>
-                            <div class="key" data-key="Y"><span>Y</span></div>
-                            <div class="key" data-key="U"><span>U</span></div>
-                            <div class="key" data-key="I"><span>I</span></div>
-                            <div class="key" data-key="O"><span>O</span></div>
-                            <div class="key" data-key="P"><span>P</span></div>
-                        </div>
-
-                        <div class="keyboard-row">
-                            <div class="key" data-key="A"><span>A</span></div>
-                            <div class="key" data-key="S"><span>S</span></div>
-                            <div class="key" data-key="D"><span>D</span></div>
-                            <div class="key" data-key="F"><span>F</span></div>
-                            <div class="key" data-key="G"><span>G</span></div>
-                            <div class="key" data-key="H"><span>H</span></div>
-                            <div class="key" data-key="J"><span>J</span></div>
-                            <div class="key" data-key="K"><span>K</span></div>
-                            <div class="key" data-key="L"><span>L</span></div>
-                        </div>
-
-                        <div class="keyboard-row">
-                            <div class="key" data-key="Z"><span>Z</span></div>
-                            <div class="key" data-key="X"><span>X</span></div>
-                            <div class="key" data-key="C"><span>C</span></div>
-                            <div class="key" data-key="V"><span>V</span></div>
-                            <div class="key" data-key="B"><span>B</span></div>
-                            <div class="key" data-key="N"><span>N</span></div>
-                            <div class="key" data-key="M"><span>M</span></div>
-                            <div class="key special" data-key="."><span>.</span></div>
-                            <div class="key special" data-key=","><span>,</span></div>
-                            <div class="key special" data-key="?"><span>?</span></div>
-                        </div>
-
-                        <div class="keyboard-row">
-                            <div class="key special" data-key="CLEAR"><span>Clear</span></div>
-                            <div class="key space" data-key=" "><span>Space</span></div>
-                            <div class="key special" data-key="BACK"><span>← Back</span></div>
-                            <div class="key special" data-key="SPEAK"><span>🔊 Speak</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Communication Board -->
-                <div class="stage-content" id="comm-content">
-                    <div class="stage-header">
-                        <h1>💬 Quick Phrases</h1>
-                        <p>Communicate quickly with pre-set phrases. Voice output included.</p>
-                    </div>
-
-                    <div class="comm-board">
-                        <div class="comm-card" onclick="speak('Hello, how are you?')">
-                            <div class="comm-icon">👋</div>
-                            <div class="comm-text">Hello</div>
-                            <div class="comm-category">Greeting</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('Thank you very much')">
-                            <div class="comm-icon">🙏</div>
-                            <div class="comm-text">Thank You</div>
-                            <div class="comm-category">Gratitude</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I need help immediately')">
-                            <div class="comm-icon">🆘</div>
-                            <div class="comm-text">I Need Help</div>
-                            <div class="comm-category">Urgent</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('Yes')">
-                            <div class="comm-icon">✅</div>
-                            <div class="comm-text">Yes</div>
-                            <div class="comm-category">Response</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('No')">
-                            <div class="comm-icon">❌</div>
-                            <div class="comm-text">No</div>
-                            <div class="comm-category">Response</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I am hungry')">
-                            <div class="comm-icon">🍽️</div>
-                            <div class="comm-text">I'm Hungry</div>
-                            <div class="comm-category">Need</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I am thirsty')">
-                            <div class="comm-icon">💧</div>
-                            <div class="comm-text">I'm Thirsty</div>
-                            <div class="comm-category">Need</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I need to use the bathroom')">
-                            <div class="comm-icon">🚻</div>
-                            <div class="comm-text">Bathroom</div>
-                            <div class="comm-category">Need</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I am tired and need rest')">
-                            <div class="comm-icon">😴</div>
-                            <div class="comm-text">I'm Tired</div>
-                            <div class="comm-category">Feeling</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I am in pain')">
-                            <div class="comm-icon">🤕</div>
-                            <div class="comm-text">I'm in Pain</div>
-                            <div class="comm-category">Medical</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('Please wait a moment')">
-                            <div class="comm-icon">⏳</div>
-                            <div class="comm-text">Please Wait</div>
-                            <div class="comm-category">Request</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I love you')">
-                            <div class="comm-icon">❤️</div>
-                            <div class="comm-text">I Love You</div>
-                            <div class="comm-category">Emotion</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('Good morning')">
-                            <div class="comm-icon">🌅</div>
-                            <div class="comm-text">Good Morning</div>
-                            <div class="comm-category">Greeting</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('Good night')">
-                            <div class="comm-icon">🌙</div>
-                            <div class="comm-text">Good Night</div>
-                            <div class="comm-category">Greeting</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('How are you?')">
-                            <div class="comm-icon">💭</div>
-                            <div class="comm-text">How Are You?</div>
-                            <div class="comm-category">Question</div>
-                        </div>
-
-                        <div class="comm-card" onclick="speak('I am happy')">
-                            <div class="comm-icon">😊</div>
-                            <div class="comm-text">I'm Happy</div>
-                            <div class="comm-category">Feeling</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Email & Messages -->
-                <div class="stage-content" id="messages-content">
-                    <div class="stage-header">
-                        <h1>📧 Email & Messages</h1>
-                        <p>Send messages and emails to your contacts with eye control.</p>
-                    </div>
-
-                    <div class="message-composer">
-                        <h3 style="margin-bottom: 20px;">Quick Contacts</h3>
-                        <div class="contact-grid">
-                            <div class="contact-card" onclick="selectContact(this, 'Family')">
-                                <div class="contact-avatar">👨‍👩‍👧‍👦</div>
-                                <div class="contact-name">Family</div>
-                            </div>
-                            <div class="contact-card" onclick="selectContact(this, 'Doctor')">
-                                <div class="contact-avatar">👨‍⚕️</div>
-                                <div class="contact-name">Doctor</div>
-                            </div>
-                            <div class="contact-card" onclick="selectContact(this, 'Caregiver')">
-                                <div class="contact-avatar">👨‍⚕️</div>
-                                <div class="contact-name">Caregiver</div>
-                            </div>
-                            <div class="contact-card" onclick="selectContact(this, 'Friend')">
-                                <div class="contact-avatar">👤</div>
-                                <div class="contact-name">Friend</div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">To:</label>
-                            <input type="text" class="form-input" id="message-to" placeholder="Select a contact above">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Subject:</label>
-                            <input type="text" class="form-input" id="message-subject" placeholder="Message subject">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Message:</label>
-                            <textarea class="form-input form-textarea" id="message-body" placeholder="Type your message..."></textarea>
-                        </div>
-
-                        <div style="display: flex; gap: 12px;">
-                            <button class="icon-btn" style="flex: 1;" onclick="sendMessage()">
-                                📤 Send Message
-                            </button>
-                            <button class="icon-btn" onclick="clearMessage()">
-                                🗑️ Clear
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Smart Home -->
-                <div class="stage-content" id="smart-content">
-                    <div class="stage-header">
-                        <h1>🏠 Smart Home Control</h1>
-                        <p>Control your environment with your eyes. Adjust lights, temperature, and more.</p>
-                    </div>
-
-                    <div class="smart-grid">
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">💡</div>
-                                    <div>
-                                        <div class="smart-title">Living Room Lights</div>
-                                        <div class="smart-status" id="light-status">Off</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch" id="light-toggle" onclick="toggleLight()"></div>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-label">Brightness</div>
-                                <div class="slider" onclick="adjustBrightness(event)">
-                                    <div class="slider-fill" id="brightness-fill" style="width: 60%"></div>
-                                </div>
-                                <div class="slider-value" id="brightness-value">60%</div>
-                            </div>
-                        </div>
-
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">🌡️</div>
-                                    <div>
-                                        <div class="smart-title">Temperature</div>
-                                        <div class="smart-status" id="temp-status">22°C</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch on" id="temp-toggle" onclick="toggleTemp()"></div>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-label">Set Temperature</div>
-                                <div class="slider" onclick="adjustTemp(event)">
-                                    <div class="slider-fill" id="temp-fill" style="width: 55%"></div>
-                                </div>
-                                <div class="slider-value" id="temp-value">22°C</div>
-                            </div>
-                        </div>
-
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">📺</div>
-                                    <div>
-                                        <div class="smart-title">Television</div>
-                                        <div class="smart-status" id="tv-status">Off</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch" id="tv-toggle" onclick="toggleTV()"></div>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-label">Volume</div>
-                                <div class="slider" onclick="adjustVolume(event)">
-                                    <div class="slider-fill" id="volume-fill" style="width: 40%"></div>
-                                </div>
-                                <div class="slider-value" id="volume-value">40%</div>
-                            </div>
-                        </div>
-
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">🪟</div>
-                                    <div>
-                                        <div class="smart-title">Window Blinds</div>
-                                        <div class="smart-status" id="blinds-status">Closed</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch" id="blinds-toggle" onclick="toggleBlinds()"></div>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-label">Position</div>
-                                <div class="slider" onclick="adjustBlinds(event)">
-                                    <div class="slider-fill" id="blinds-fill" style="width: 0%"></div>
-                                </div>
-                                <div class="slider-value" id="blinds-value">Closed</div>
-                            </div>
-                        </div>
-
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">🌬️</div>
-                                    <div>
-                                        <div class="smart-title">Air Purifier</div>
-                                        <div class="smart-status" id="purifier-status">Off</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch" id="purifier-toggle" onclick="togglePurifier()"></div>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-label">Fan Speed</div>
-                                <div class="slider" onclick="adjustPurifier(event)">
-                                    <div class="slider-fill" id="purifier-fill" style="width: 50%"></div>
-                                </div>
-                                <div class="slider-value" id="purifier-value">Medium</div>
-                            </div>
-                        </div>
-
-                        <div class="smart-card">
-                            <div class="smart-header">
-                                <div class="smart-info">
-                                    <div class="smart-icon">🔒</div>
-                                    <div>
-                                        <div class="smart-title">Door Lock</div>
-                                        <div class="smart-status" id="lock-status">Locked</div>
-                                    </div>
-                                </div>
-                                <div class="toggle-switch on" id="lock-toggle" onclick="toggleLock()"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Media Player -->
-                <div class="stage-content" id="media-content">
-                    <div class="stage-header">
-                        <h1>🎵 Media Player</h1>
-                        <p>Control your music and media playback with your eyes.</p>
-                    </div>
-
-                    <div class="media-player">
-                        <div class="album-art">🎵</div>
-                        
-                        <div class="track-info">
-                            <div class="track-title" id="track-title">Peaceful Journey</div>
-                            <div class="track-artist" id="track-artist">Calm Sounds Collection</div>
-                        </div>
-
-                        <div class="progress-bar" onclick="seekTrack(event)">
-                            <div class="progress-fill" id="progress-fill"></div>
-                        </div>
-
-                        <div class="time-labels">
-                            <span id="current-time">1:32</span>
-                            <span id="total-time">5:00</span>
-                        </div>
-
-                        <div class="media-controls">
-                            <div class="media-btn" onclick="previousTrack()">⏮️</div>
-                            <div class="media-btn play" id="play-btn" onclick="togglePlay()">▶️</div>
-                            <div class="media-btn" onclick="nextTrack()">⏭️</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Web Browser -->
-                <div class="stage-content" id="browser-content">
-                    <div class="stage-header">
-                        <h1>🌐 Web Browser</h1>
-                        <p>Navigate the web with eye control. Quick access to your favorite websites.</p>
-                    </div>
-
-                    <div class="browser-bar">
-                        <div class="browser-btn" onclick="browserBack()">◀️</div>
-                        <div class="browser-btn" onclick="browserForward()">▶️</div>
-                        <input type="text" class="form-input browser-input" placeholder="Enter website URL..." id="browser-url">
-                        <div class="browser-btn" onclick="browserGo()">🔍</div>
-                    </div>
-
-                    <h3 style="margin: 24px 0 16px;">Quick Access</h3>
-                    <div class="browser-shortcuts">
-                        <div class="shortcut-card" onclick="openWebsite('news')">
-                            <div class="shortcut-icon">📰</div>
-                            <div class="shortcut-name">News</div>
-                        </div>
-                        <div class="shortcut-card" onclick="openWebsite('weather')">
-                            <div class="shortcut-icon">🌤️</div>
-                            <div class="shortcut-name">Weather</div>
-                        </div>
-                        <div class="shortcut-card" onclick="openWebsite('email')">
-                            <div class="shortcut-icon">📧</div>
-                            <div class="shortcut-name">Email</div>
-                        </div>
-                        <div class="shortcut-card" onclick="openWebsite('social')">
-                            <div class="shortcut-icon">👥</div>
-                            <div class="shortcut-name">Social</div>
-                        </div>
-                        <div class="shortcut-card" onclick="openWebsite('video')">
-                            <div class="shortcut-icon">📺</div>
-                            <div class="shortcut-name">Videos</div>
-                        </div>
-                        <div class="shortcut-card" onclick="openWebsite('health')">
-                            <div class="shortcut-icon">🏥</div>
-                            <div class="shortcut-name">Health</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Phone Dialer -->
-                <div class="stage-content" id="phone-content">
-                    <div class="stage-header">
-                        <h1>📞 Phone Dialer</h1>
-                        <p>Make calls using eye control. Perfect for hands-free communication.</p>
-                    </div>
-
-                    <div style="max-width: 500px; margin: 0 auto;">
-                        <div class="dialer-display" id="dialer-display"></div>
-
-                        <div class="dialer-pad">
-                            <div class="dial-btn" onclick="dialNumber('1')">1</div>
-                            <div class="dial-btn" onclick="dialNumber('2')">2</div>
-                            <div class="dial-btn" onclick="dialNumber('3')">3</div>
-                            <div class="dial-btn" onclick="dialNumber('4')">4</div>
-                            <div class="dial-btn" onclick="dialNumber('5')">5</div>
-                            <div class="dial-btn" onclick="dialNumber('6')">6</div>
-                            <div class="dial-btn" onclick="dialNumber('7')">7</div>
-                            <div class="dial-btn" onclick="dialNumber('8')">8</div>
-                            <div class="dial-btn" onclick="dialNumber('9')">9</div>
-                            <div class="dial-btn" onclick="dialNumber('*')">*</div>
-                            <div class="dial-btn" onclick="dialNumber('0')">0</div>
-                            <div class="dial-btn" onclick="dialNumber('#')">#</div>
-                        </div>
-
-                        <div class="call-actions">
-                            <div class="call-btn call" onclick="makeCall()">📞</div>
-                            <div class="call-btn" onclick="clearDialer()">⌫</div>
-                            <div class="call-btn end" onclick="endCall()">📵</div>
-                        </div>
-
-                        <h3 style="margin: 32px 0 16px; text-align: center;">Quick Contacts</h3>
-                        <div class="contact-grid">
-                            <div class="contact-card" onclick="quickDial('Emergency')">
-                                <div class="contact-avatar">🚨</div>
-                                <div class="contact-name">Emergency</div>
-                            </div>
-                            <div class="contact-card" onclick="quickDial('Family')">
-                                <div class="contact-avatar">👨‍👩‍👧‍👦</div>
-                                <div class="contact-name">Family</div>
-                            </div>
-                            <div class="contact-card" onclick="quickDial('Doctor')">
-                                <div class="contact-avatar">👨‍⚕️</div>
-                                <div class="contact-name">Doctor</div>
-                            </div>
-                            <div class="contact-card" onclick="quickDial('Caregiver')">
-                                <div class="contact-avatar">👨‍⚕️</div>
-                                <div class="contact-name">Caregiver</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Notes & Journal -->
-                <div class="stage-content" id="notes-content">
-                    <div class="stage-header">
-                        <h1>📝 Notes & Journal</h1>
-                        <p>Keep track of thoughts, reminders, and daily entries.</p>
-                    </div>
-
-                    <button class="icon-btn" style="margin-bottom: 20px;" onclick="createNewNote()">
-                        ➕ Create New Note
-                    </button>
-
-                    <div class="notes-list">
-                        <div class="note-card" onclick="openNote(this)">
-                            <div class="note-header">
-                                <div class="note-title">Daily Thoughts</div>
-                                <div class="note-date">Today</div>
-                            </div>
-                            <div class="note-content">
-                                Feeling grateful for the support from my family. The new eye tracking system is making communication so much easier...
-                            </div>
-                        </div>
-
-                        <div class="note-card" onclick="openNote(this)">
-                            <div class="note-header">
-                                <div class="note-title">Medication Reminder</div>
-                                <div class="note-date">Yesterday</div>
-                            </div>
-                            <div class="note-content">
-                                Remember to take medication at 8 AM and 8 PM daily. Doctor appointment scheduled for next week.
-                            </div>
-                        </div>
-
-                        <div class="note-card" onclick="openNote(this)">
-                            <div class="note-header">
-                                <div class="note-title">Shopping List</div>
-                                <div class="note-date">2 days ago</div>
-                            </div>
-                            <div class="note-content">
-                                Groceries needed: milk, bread, eggs, fruits, vegetables. Also need to restock on medical supplies.
-                            </div>
+                        <div class="stat-card p-3 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-400" id="sessionTime">0:00</div>
+                            <div class="text-xs text-gray-400 mt-1">Session Time</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Settings -->
-                <div class="stage-content" id="settings-content">
-                    <div class="stage-header">
-                        <h1>⚙️ Settings</h1>
-                        <p>Customize your eye tracking experience for optimal comfort and control.</p>
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <h2 class="text-lg font-bold mb-4">Settings</h2>
+                    
+                    <div class="space-y-4">
+                        <!-- Speech Rate -->
+                        <div>
+                            <label class="text-sm text-gray-400 mb-2 block">Speech Speed</label>
+                            <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="1" 
+                                   class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                            <div class="text-xs text-gray-500 mt-1" id="rateValue">1.0x Normal</div>
+                        </div>
+                        
+                        <!-- Voice Selection -->
+                        <div>
+                            <label class="text-sm text-gray-400 mb-2 block">Voice</label>
+                            <select id="voiceSelect" class="w-full bg-darker border border-gray-700 rounded-lg px-3 py-2 text-sm">
+                                <option>Loading voices...</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Auto Options -->
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
+                                <input type="checkbox" id="autoSpeak" class="w-4 h-4 accent-purple-600">
+                                <span class="text-sm">Auto-speak words</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
+                                <input type="checkbox" id="showLandmarks" checked class="w-4 h-4 accent-purple-600">
+                                <span class="text-sm">Show hand tracking</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
+                                <input type="checkbox" id="autoSpace" checked class="w-4 h-4 accent-purple-600">
+                                <span class="text-sm">Auto-add spaces</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
+                                <input type="checkbox" id="vibrate" checked class="w-4 h-4 accent-purple-600">
+                                <span class="text-sm">Vibration feedback</span>
+                            </label>
+                        </div>
                     </div>
+                </div>
 
-                    <div class="settings-grid">
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Click Method</div>
-                            </div>
-                            <div class="setting-description">
-                                Choose how you want to activate items on screen
-                            </div>
-                            <div class="setting-options">
-                                <button class="option-btn" onclick="setClickMethod('dwell', this)">
-                                    Dwell Only
-                                </button>
-                                <button class="option-btn" onclick="setClickMethod('squint', this)">
-                                    Squint Only
-                                </button>
-                                <button class="option-btn selected" onclick="setClickMethod('both', this)">
-                                    Both
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Dwell Time</div>
-                            </div>
-                            <div class="setting-description">
-                                How long to look at an item before it activates
-                            </div>
-                            <div class="setting-options">
-                                <button class="option-btn" onclick="setDwellTime(500, this)">
-                                    Fast (0.5s)
-                                </button>
-                                <button class="option-btn selected" onclick="setDwellTime(1000, this)">
-                                    Normal (1s)
-                                </button>
-                                <button class="option-btn" onclick="setDwellTime(1500, this)">
-                                    Slow (1.5s)
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Cursor Speed</div>
-                            </div>
-                            <div class="setting-description">
-                                Adjust how fast the cursor follows your gaze
-                            </div>
-                            <div class="setting-control">
-                                <div class="slider" onclick="adjustCursorSpeed(event)">
-                                    <div class="slider-fill" id="speed-fill" style="width: 50%"></div>
+                <!-- Gesture Guide -->
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <h2 class="text-lg font-bold mb-4">Gesture Guide</h2>
+                    <div class="space-y-2 max-h-[400px] overflow-y-auto scroll-container">
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">👋</div>
+                                <div>
+                                    <div class="font-medium text-sm">Hello</div>
+                                    <div class="text-xs text-gray-400">Open hand wave</div>
                                 </div>
-                                <div class="slider-value" id="speed-value">Medium</div>
                             </div>
                         </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Smoothing</div>
-                            </div>
-                            <div class="setting-description">
-                                Reduce jitter by smoothing cursor movement
-                            </div>
-                            <div class="setting-control">
-                                <div class="slider" onclick="adjustSmoothing(event)">
-                                    <div class="slider-fill" id="smoothing-fill" style="width: 60%"></div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">👍</div>
+                                <div>
+                                    <div class="font-medium text-sm">Yes / Good</div>
+                                    <div class="text-xs text-gray-400">Thumbs up</div>
                                 </div>
-                                <div class="slider-value" id="smoothing-value">60%</div>
                             </div>
                         </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Voice Feedback</div>
-                                <div class="toggle-switch on" id="voice-toggle" onclick="toggleVoice()"></div>
-                            </div>
-                            <div class="setting-description">
-                                Speak text out loud from keyboard and communication board
-                            </div>
-                        </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Sound Effects</div>
-                                <div class="toggle-switch on" id="sound-toggle" onclick="toggleSound()"></div>
-                            </div>
-                            <div class="setting-description">
-                                Play sounds when clicking and interacting with elements
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">👎</div>
+                                <div>
+                                    <div class="font-medium text-sm">No / Bad</div>
+                                    <div class="text-xs text-gray-400">Thumbs down</div>
+                                </div>
                             </div>
                         </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">High Contrast Mode</div>
-                                <div class="toggle-switch" id="contrast-toggle" onclick="toggleContrast()"></div>
-                            </div>
-                            <div class="setting-description">
-                                Increase visual contrast for better visibility
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">✌️</div>
+                                <div>
+                                    <div class="font-medium text-sm">Peace / Okay</div>
+                                    <div class="text-xs text-gray-400">Peace sign</div>
+                                </div>
                             </div>
                         </div>
-
-                        <div class="setting-card">
-                            <div class="setting-header">
-                                <div class="setting-title">Cursor Size</div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">✋</div>
+                                <div>
+                                    <div class="font-medium text-sm">Stop / Wait</div>
+                                    <div class="text-xs text-gray-400">Open palm forward</div>
+                                </div>
                             </div>
-                            <div class="setting-description">
-                                Adjust the size of the eye tracking cursor
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">👌</div>
+                                <div>
+                                    <div class="font-medium text-sm">Okay / Perfect</div>
+                                    <div class="text-xs text-gray-400">OK sign</div>
+                                </div>
                             </div>
-                            <div class="setting-options">
-                                <button class="option-btn" onclick="setCursorSize('small', this)">
-                                    Small
-                                </button>
-                                <button class="option-btn selected" onclick="setCursorSize('medium', this)">
-                                    Medium
-                                </button>
-                                <button class="option-btn" onclick="setCursorSize('large', this)">
-                                    Large
-                                </button>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">🤙</div>
+                                <div>
+                                    <div class="font-medium text-sm">Call / Contact</div>
+                                    <div class="text-xs text-gray-400">Hang loose gesture</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">🙏</div>
+                                <div>
+                                    <div class="font-medium text-sm">Please / Thanks</div>
+                                    <div class="text-xs text-gray-400">Hands together</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">🤘</div>
+                                <div>
+                                    <div class="font-medium text-sm">Love / Rock</div>
+                                    <div class="text-xs text-gray-400">Rock hand sign</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">✊</div>
+                                <div>
+                                    <div class="font-medium text-sm">Strong / Fight</div>
+                                    <div class="text-xs text-gray-400">Closed fist</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">👉</div>
+                                <div>
+                                    <div class="font-medium text-sm">You / That</div>
+                                    <div class="text-xs text-gray-400">Pointing finger</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">🤚</div>
+                                <div>
+                                    <div class="font-medium text-sm">I / Me</div>
+                                    <div class="text-xs text-gray-400">Point to yourself</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Mobile Bottom Navigation -->
-        <div id="mobile-nav">
-            <div class="mobile-nav-grid">
-                <button class="mobile-nav-item active" onclick="switchTab('keyboard')">
-                    <span class="nav-icon">⌨️</span>
-                    Keyboard
-                </button>
-                <button class="mobile-nav-item" onclick="switchTab('comm')">
-                    <span class="nav-icon">💬</span>
-                    Phrases
-                </button>
-                <button class="mobile-nav-item" onclick="switchTab('smart')">
-                    <span class="nav-icon">🏠</span>
-                    Home
-                </button>
-                <button class="mobile-nav-item" onclick="switchTab('media')">
-                    <span class="nav-icon">🎵</span>
-                    Media
-                </button>
-                <button class="mobile-nav-item" onclick="switchTab('settings')">
-                    <span class="nav-icon">⚙️</span>
-                    Settings
-                </button>
+                <!-- History -->
+                <div class="card rounded-2xl p-4 md:p-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-bold">Word History</h2>
+                        <button onclick="clearHistory()" class="text-xs text-gray-400 hover:text-white">Clear</button>
+                    </div>
+                    <div id="wordHistory" class="space-y-2 max-h-[300px] overflow-y-auto scroll-container">
+                        <div class="text-sm text-gray-500 text-center py-4">No words detected yet</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Emergency Button -->
-    <div id="emergency-btn" onclick="emergency()">🚨</div>
+    <script>
+        // Global variables
+        let hands;
+        let camera;
+        let sentence = [];
+        let detectedWords = [];
+        let lastDetectedWord = '';
+        let lastDetectionTime = 0;
+        let isRunning = false;
+        let sessionStartTime = null;
+        let wordCount = 0;
+        let facingMode = 'user';
+        let voices = [];
 
-<script>
-    // === CONFIGURATION ===
-    const CONFIG = {
-        SENSITIVITY_X: 2.5,
-        SENSITIVITY_Y: 3.5,
-        SMOOTHING: 0.15,
-        SQUINT_THRESH: 0.22,
-        BLINK_THRESH: 0.12,
-        CLICK_COOLDOWN: 800,
-        DWELL_TIME: 1000,
-    };
+        // DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const flipBtn = document.getElementById('flipBtn');
+        const speakBtn = document.getElementById('speakBtn');
+        const clearSentenceBtn = document.getElementById('clearSentenceBtn');
+        const sentenceDisplay = document.getElementById('sentenceDisplay');
+        const currentWordEl = document.getElementById('currentWord');
+        const wordDisplayEl = document.getElementById('wordDisplay');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const wordCountEl = document.getElementById('wordCount');
+        const sessionTimeEl = document.getElementById('sessionTime');
+        const wordHistoryEl = document.getElementById('wordHistory');
+        const speechRateInput = document.getElementById('speechRate');
+        const rateValueEl = document.getElementById('rateValue');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const autoSpeakCheck = document.getElementById('autoSpeak');
+        const showLandmarksCheck = document.getElementById('showLandmarks');
+        const autoSpaceCheck = document.getElementById('autoSpace');
+        const vibrateCheck = document.getElementById('vibrate');
 
-    // === STATE ===
-    let state = {
-        cursorX: window.innerWidth / 2,
-        cursorY: window.innerHeight / 2,
-        targetX: window.innerWidth / 2,
-        targetY: window.innerHeight / 2,
-        isSquinting: false,
-        lastClickTime: 0,
-        dwellElement: null,
-        dwellStartTime: 0,
-        dwellEnabled: true,
-        squintEnabled: true,
-        voiceEnabled: true,
-        soundEnabled: true,
-        isPlaying: false,
-        currentProgress: 30,
-        keyboardText: '',
-        dialerNumber: '',
-    };
-
-    // === ELEMENTS ===
-    const cursor = document.getElementById('gaze-cursor');
-    const dwellRing = document.getElementById('dwell-ring');
-    const videoElement = document.getElementById('input-video');
-
-    // === MEDIAPIPE SETUP ===
-    const faceMesh = new FaceMesh({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-    });
-    
-    faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-
-    faceMesh.onResults(onResults);
-
-    const camera = new Camera(videoElement, {
-        onFrame: async () => { await faceMesh.send({image: videoElement}); },
-        width: 640,
-        height: 480
-    });
-    camera.start();
-
-    // === MAIN TRACKING LOOP ===
-    function onResults(results) {
-        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
-
-        const landmarks = results.multiFaceLandmarks[0];
-
-        // Calculate squint
-        const leftH = getDist(landmarks[159], landmarks[145]);
-        const leftW = getDist(landmarks[33], landmarks[133]);
-        const rightH = getDist(landmarks[386], landmarks[374]);
-        const rightW = getDist(landmarks[362], landmarks[263]);
-
-        const ratioL = leftH / leftW;
-        const ratioR = rightH / rightW;
-        const avgRatio = (ratioL + ratioR) / 2;
-
-        // Detect squint click
-        const now = Date.now();
-        const isSquintingNow = avgRatio < CONFIG.SQUINT_THRESH && avgRatio > CONFIG.BLINK_THRESH;
-
-        if (state.squintEnabled && isSquintingNow && !state.isSquinting && 
-            (now - state.lastClickTime > CONFIG.CLICK_COOLDOWN)) {
-            state.lastClickTime = now;
-            triggerClick();
+        // Load voices
+        function loadVoices() {
+            voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                voiceSelect.innerHTML = '';
+                voices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    if (voice.default) {
+                        option.selected = true;
+                    }
+                    voiceSelect.appendChild(option);
+                });
+            }
         }
-        
-        state.isSquinting = isSquintingNow;
 
-        // Calculate cursor position
-        if (!state.isSquinting) {
-            const faceX = landmarks[1].x;
-            const faceY = landmarks[1].y;
+        // Load voices on page load and when they change
+        loadVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        // Update UI values
+        speechRateInput.addEventListener('input', (e) => {
+            const rate = parseFloat(e.target.value);
+            let label = 'Normal';
+            if (rate < 1) label = 'Slow';
+            else if (rate > 1) label = 'Fast';
+            rateValueEl.textContent = `${rate.toFixed(1)}x ${label}`;
+        });
+
+        // MediaPipe Hands setup
+        function initializeMediaPipe() {
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+        }
+
+        // Process hand detection results
+        function onResults(results) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
             
-            const rawX = 1 - faceX; 
-            const rawY = faceY;
-
-            const deltaX = (rawX - 0.5) * CONFIG.SENSITIVITY_X;
-            const deltaY = (rawY - 0.5) * CONFIG.SENSITIVITY_Y;
-
-            state.targetX = (0.5 + deltaX) * window.innerWidth;
-            state.targetY = (0.5 + deltaY) * window.innerHeight;
-
-            state.targetX = Math.max(0, Math.min(window.innerWidth, state.targetX));
-            state.targetY = Math.max(0, Math.min(window.innerHeight, state.targetY));
-        }
-
-        // Smoothing
-        state.cursorX = lerp(state.cursorX, state.targetX, CONFIG.SMOOTHING);
-        state.cursorY = lerp(state.cursorY, state.targetY, CONFIG.SMOOTHING);
-
-        // Update cursor position
-        cursor.style.left = `${state.cursorX}px`;
-        cursor.style.top = `${state.cursorY}px`;
-
-        // Update position display
-        document.getElementById('x-pos').textContent = Math.round(state.cursorX);
-        document.getElementById('y-pos').textContent = Math.round(state.cursorY);
-
-        // Dwell detection
-        if (state.dwellEnabled) {
-            handleDwell();
-        }
-    }
-
-    function getDist(p1, p2) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
-
-    function lerp(start, end, amt) {
-        return (1 - amt) * start + amt * end;
-    }
-
-    // === DWELL DETECTION ===
-    function handleDwell() {
-        const elem = document.elementFromPoint(state.cursorX, state.cursorY);
-        
-        if (!elem || elem.id === 'gaze-cursor' || elem.id === 'dwell-ring') {
-            resetDwell();
-            return;
-        }
-
-        const isClickable = elem.onclick || 
-                           elem.tagName === 'BUTTON' || 
-                           elem.classList.contains('key') ||
-                           elem.classList.contains('comm-card') ||
-                           elem.classList.contains('toggle-switch') ||
-                           elem.classList.contains('slider') ||
-                           elem.classList.contains('media-btn') ||
-                           elem.classList.contains('dial-btn') ||
-                           elem.classList.contains('contact-card') ||
-                           elem.classList.contains('shortcut-card') ||
-                           elem.classList.contains('option-btn') ||
-                           elem.classList.contains('suggestion') ||
-                           elem.classList.contains('call-btn');
-
-        if (isClickable) {
-            if (state.dwellElement !== elem) {
-                state.dwellElement = elem;
-                state.dwellStartTime = Date.now();
-            } else {
-                const dwellDuration = Date.now() - state.dwellStartTime;
-                const progress = Math.min(dwellDuration / CONFIG.DWELL_TIME, 1);
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
                 
-                dwellRing.style.transform = `rotate(${progress * 360 - 90}deg)`;
-                cursor.classList.add('dwelling');
+                if (showLandmarksCheck.checked) {
+                    drawHandLandmarks(landmarks);
+                }
+                
+                const word = recognizeWord(landmarks);
+                if (word) {
+                    handleDetectedWord(word);
+                }
+            } else {
+                currentWordEl.classList.add('hidden');
+            }
+            
+            ctx.restore();
+        }
 
-                if (dwellDuration >= CONFIG.DWELL_TIME) {
-                    triggerClick();
-                    resetDwell();
+        // Draw hand landmarks
+        function drawHandLandmarks(landmarks) {
+            const connections = [
+                [0,1],[1,2],[2,3],[3,4],
+                [0,5],[5,6],[6,7],[7,8],
+                [0,9],[9,10],[10,11],[11,12],
+                [0,13],[13,14],[14,15],[15,16],
+                [0,17],[17,18],[18,19],[19,20],
+                [5,9],[9,13],[13,17]
+            ];
+
+            ctx.strokeStyle = 'rgba(139, 92, 246, 0.6)';
+            ctx.lineWidth = 2;
+            
+            connections.forEach(([start, end]) => {
+                const startPoint = landmarks[start];
+                const endPoint = landmarks[end];
+                
+                ctx.beginPath();
+                ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height);
+                ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height);
+                ctx.stroke();
+            });
+
+            landmarks.forEach((landmark, index) => {
+                const x = landmark.x * canvas.width;
+                const y = landmark.y * canvas.height;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, index === 0 ? 8 : 4, 0, 2 * Math.PI);
+                ctx.fillStyle = index === 0 ? '#8b5cf6' : '#6366f1';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+
+        // Word recognition based on hand gestures
+        function recognizeWord(landmarks) {
+            const fingerTips = [4, 8, 12, 16, 20];
+            const fingerBases = [2, 5, 9, 13, 17];
+            const wrist = landmarks[0];
+            
+            // Calculate finger states
+            const fingersExtended = fingerTips.map((tip, i) => {
+                if (i === 0) {
+                    return landmarks[tip].x > landmarks[fingerBases[i]].x + 0.05;
+                }
+                return landmarks[tip].y < landmarks[fingerBases[i]].y - 0.05;
+            });
+
+            const [thumbOut, indexUp, middleUp, ringUp, pinkyUp] = fingersExtended;
+            
+            // Calculate distances
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+            
+            const thumbIndexDist = distance(thumbTip, indexTip);
+            const thumbMiddleDist = distance(thumbTip, middleTip);
+            
+            // Gesture recognition patterns for whole words
+            
+            // Wave (Hello) - open hand with fingers spread
+            if (indexUp && middleUp && ringUp && pinkyUp && thumbOut) {
+                const fingerSpread = Math.abs(indexTip.x - pinkyTip.x);
+                if (fingerSpread > 0.15) return 'Hello';
+            }
+            
+            // Thumbs up (Yes/Good)
+            if (thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
+                if (landmarks[4].y < landmarks[2].y) return 'Yes';
+            }
+            
+            // Thumbs down (No/Bad)
+            if (thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
+                if (landmarks[4].y > landmarks[2].y) return 'No';
+            }
+            
+            // Peace sign (Peace/Okay)
+            if (indexUp && middleUp && !ringUp && !pinkyUp && !thumbOut) {
+                return 'Okay';
+            }
+            
+            // Open palm (Stop/Wait)
+            if (indexUp && middleUp && ringUp && pinkyUp && !thumbOut) {
+                const palmFlat = Math.abs(indexTip.y - pinkyTip.y) < 0.1;
+                if (palmFlat) return 'Stop';
+            }
+            
+            // OK sign (Okay/Perfect)
+            if (thumbIndexDist < 0.05 && middleUp && ringUp && pinkyUp) {
+                return 'Perfect';
+            }
+            
+            // Pointing (You/That)
+            if (indexUp && !middleUp && !ringUp && !pinkyUp && !thumbOut) {
+                return 'You';
+            }
+            
+            // Closed fist (Strong/Fight)
+            if (!thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
+                return 'Strong';
+            }
+            
+            // Rock hand (Love)
+            if (indexUp && pinkyUp && !middleUp && !ringUp && thumbOut) {
+                return 'Love';
+            }
+            
+            // Hang loose (Call/Contact)
+            if (thumbOut && pinkyUp && !indexUp && !middleUp && !ringUp) {
+                return 'Call';
+            }
+            
+            // Three fingers (Three/Wait)
+            if (indexUp && middleUp && ringUp && !pinkyUp && !thumbOut) {
+                return 'Wait';
+            }
+            
+            // Point to self (I/Me)
+            if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+                const pointingToSelf = landmarks[8].x > 0.4 && landmarks[8].x < 0.6;
+                if (pointingToSelf) return 'I';
+            }
+            
+            // Hands together approximation (Please/Thanks)
+            if (thumbIndexDist < 0.08 && thumbMiddleDist < 0.08) {
+                return 'Please';
+            }
+            
+            // Additional gestures
+            if (middleUp && !indexUp && !ringUp && !pinkyUp && !thumbOut) {
+                return 'Bye';
+            }
+            
+            if (thumbOut && indexUp && !middleUp && !ringUp && !pinkyUp) {
+                return 'Help';
+            }
+            
+            return null;
+        }
+
+        function distance(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        }
+
+        // Handle detected word
+        function handleDetectedWord(word) {
+            const now = Date.now();
+            
+            currentWordEl.classList.remove('hidden');
+            wordDisplayEl.textContent = word;
+
+            if (word !== lastDetectedWord) {
+                lastDetectedWord = word;
+                lastDetectionTime = now;
+            } else if (now - lastDetectionTime > 1200) {
+                if (sentence.length === 0 || sentence[sentence.length - 1] !== word) {
+                    addWordToSentence(word);
+                    lastDetectionTime = now + 1000;
                 }
             }
-        } else {
-            resetDwell();
         }
-    }
 
-    function resetDwell() {
-        state.dwellElement = null;
-        state.dwellStartTime = 0;
-        dwellRing.style.transform = 'rotate(-90deg)';
-        cursor.classList.remove('dwelling');
-    }
-
-    // === CLICK TRIGGER ===
-    function triggerClick() {
-        const elem = document.elementFromPoint(state.cursorX, state.cursorY);
-        if (elem && (elem.onclick || elem.tagName === 'BUTTON')) {
-            if (state.soundEnabled) playClickSound();
-            
-            // Create ripple effect
-            const ripple = document.createElement('div');
-            ripple.className = 'click-ripple';
-            ripple.style.left = state.cursorX + 'px';
-            ripple.style.top = state.cursorY + 'px';
-            document.body.appendChild(ripple);
-            setTimeout(() => ripple.remove(), 600);
-            
-            elem.click();
-            
-            cursor.classList.add('clicking');
-            setTimeout(() => cursor.classList.remove('clicking'), 200);
-        }
-    }
-
-    // === UI FUNCTIONS ===
-    function closeTutorial() {
-        document.getElementById('tutorial-overlay').classList.remove('active');
-    }
-
-    function showTutorial() {
-        document.getElementById('tutorial-overlay').classList.add('active');
-    }
-
-    function switchTab(tabName) {
-        // Update desktop nav
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        const navItem = Array.from(document.querySelectorAll('.nav-item'))
-            .find(item => item.onclick && item.onclick.toString().includes(tabName));
-        if (navItem) navItem.classList.add('active');
-
-        // Update mobile nav
-        document.querySelectorAll('.mobile-nav-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        const mobileItem = Array.from(document.querySelectorAll('.mobile-nav-item'))
-            .find(item => item.onclick && item.onclick.toString().includes(tabName));
-        if (mobileItem) mobileItem.classList.add('active');
-
-        // Update content
-        document.querySelectorAll('.stage-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        document.getElementById(`${tabName}-content`).classList.add('active');
-    }
-
-    function toggleDwell() {
-        state.dwellEnabled = !state.dwellEnabled;
-        const btn = document.getElementById('dwell-toggle');
-        btn.classList.toggle('active');
-        showNotification('Dwell Click', state.dwellEnabled ? 'Enabled' : 'Disabled', 'info');
-    }
-
-    function toggleSquint() {
-        state.squintEnabled = !state.squintEnabled;
-        const btn = document.getElementById('squint-toggle');
-        btn.classList.toggle('active');
-        showNotification('Squint Click', state.squintEnabled ? 'Enabled' : 'Disabled', 'info');
-    }
-
-    function recalibrate() {
-        showNotification('Calibration', 'Look at the center of the screen', 'success');
-        state.cursorX = window.innerWidth / 2;
-        state.cursorY = window.innerHeight / 2;
-        state.targetX = window.innerWidth / 2;
-        state.targetY = window.innerHeight / 2;
-    }
-
-    // === KEYBOARD ===
-    document.querySelectorAll('.key').forEach(key => {
-        key.onclick = function() {
-            const keyValue = this.getAttribute('data-key');
-            const output = document.getElementById('keyboard-output');
-            
-            if (keyValue === 'BACK') {
-                state.keyboardText = state.keyboardText.slice(0, -1);
-            } else if (keyValue === 'CLEAR') {
-                state.keyboardText = '';
-            } else if (keyValue === 'SPEAK') {
-                speak(state.keyboardText);
-                return;
+        // Add word to sentence
+        function addWordToSentence(word) {
+            if (autoSpaceCheck.checked && sentence.length > 0) {
+                sentence.push(word);
             } else {
-                state.keyboardText += keyValue;
+                sentence.push(word);
             }
             
-            output.innerHTML = state.keyboardText + '<span class="output-cursor"></span>';
-        };
-    });
-
-    function addSuggestion(elem) {
-        state.keyboardText += (state.keyboardText ? ' ' : '') + elem.textContent;
-        const output = document.getElementById('keyboard-output');
-        output.innerHTML = state.keyboardText + '<span class="output-cursor"></span>';
-    }
-
-    // === SPEECH ===
-    function speak(text) {
-        if (!state.voiceEnabled || !text) return;
-        
-        if ('speechSynthesis' in window) {
-            speechSynthesis.cancel(); // Cancel any ongoing speech
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 0.9;
-            utterance.pitch = 1;
-            utterance.volume = 1;
-            speechSynthesis.speak(utterance);
-            showNotification('Speaking', text.length > 50 ? text.substring(0, 50) + '...' : text, 'success');
-        }
-    }
-
-    // === MESSAGING ===
-    function selectContact(elem, name) {
-        document.querySelectorAll('.contact-card').forEach(c => c.classList.remove('selected'));
-        elem.classList.add('selected');
-        document.getElementById('message-to').value = name;
-    }
-
-    function sendMessage() {
-        const to = document.getElementById('message-to').value;
-        const subject = document.getElementById('message-subject').value;
-        const body = document.getElementById('message-body').value;
-        
-        if (!to || !body) {
-            showNotification('Error', 'Please select a contact and write a message', 'info');
-            return;
-        }
-        
-        showNotification('Message Sent', `Your message to ${to} has been sent`, 'success');
-        speak(`Message sent to ${to}`);
-        clearMessage();
-    }
-
-    function clearMessage() {
-        document.getElementById('message-to').value = '';
-        document.getElementById('message-subject').value = '';
-        document.getElementById('message-body').value = '';
-        document.querySelectorAll('.contact-card').forEach(c => c.classList.remove('selected'));
-    }
-
-    // === SMART HOME ===
-    function toggleLight() {
-        const toggle = document.getElementById('light-toggle');
-        const status = document.getElementById('light-status');
-        toggle.classList.toggle('on');
-        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
-        showNotification('Living Room Lights', status.textContent, 'success');
-    }
-
-    function adjustBrightness(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('brightness-fill').style.width = percent + '%';
-        document.getElementById('brightness-value').textContent = percent + '%';
-    }
-
-    function toggleTemp() {
-        const toggle = document.getElementById('temp-toggle');
-        toggle.classList.toggle('on');
-        showNotification('Climate Control', toggle.classList.contains('on') ? 'On' : 'Off', 'success');
-    }
-
-    function adjustTemp(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = ((event.clientX - rect.left) / rect.width);
-        const temp = Math.round(16 + (percent * 14));
-        document.getElementById('temp-fill').style.width = (percent * 100) + '%';
-        document.getElementById('temp-value').textContent = temp + '°C';
-        document.getElementById('temp-status').textContent = temp + '°C';
-    }
-
-    function toggleTV() {
-        const toggle = document.getElementById('tv-toggle');
-        const status = document.getElementById('tv-status');
-        toggle.classList.toggle('on');
-        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
-        showNotification('Television', status.textContent, 'success');
-    }
-
-    function adjustVolume(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('volume-fill').style.width = percent + '%';
-        document.getElementById('volume-value').textContent = percent + '%';
-    }
-
-    function toggleBlinds() {
-        const toggle = document.getElementById('blinds-toggle');
-        const status = document.getElementById('blinds-status');
-        toggle.classList.toggle('on');
-        status.textContent = toggle.classList.contains('on') ? 'Open' : 'Closed';
-        const fill = document.getElementById('blinds-fill');
-        fill.style.width = toggle.classList.contains('on') ? '100%' : '0%';
-        document.getElementById('blinds-value').textContent = status.textContent;
-        showNotification('Window Blinds', status.textContent, 'success');
-    }
-
-    function adjustBlinds(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('blinds-fill').style.width = percent + '%';
-        document.getElementById('blinds-value').textContent = percent === 0 ? 'Closed' : 
-                                                             percent === 100 ? 'Open' : 
-                                                             percent + '% Open';
-    }
-
-    function togglePurifier() {
-        const toggle = document.getElementById('purifier-toggle');
-        const status = document.getElementById('purifier-status');
-        toggle.classList.toggle('on');
-        status.textContent = toggle.classList.contains('on') ? 'On' : 'Off';
-        showNotification('Air Purifier', status.textContent, 'success');
-    }
-
-    function adjustPurifier(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = ((event.clientX - rect.left) / rect.width);
-        const speeds = ['Low', 'Medium', 'High'];
-        const index = Math.floor(percent * 3);
-        const speed = speeds[Math.min(index, 2)];
-        document.getElementById('purifier-fill').style.width = (percent * 100) + '%';
-        document.getElementById('purifier-value').textContent = speed;
-    }
-
-    function toggleLock() {
-        const toggle = document.getElementById('lock-toggle');
-        const status = document.getElementById('lock-status');
-        toggle.classList.toggle('on');
-        status.textContent = toggle.classList.contains('on') ? 'Locked' : 'Unlocked';
-        showNotification('Door Lock', status.textContent, status.textContent === 'Locked' ? 'success' : 'info');
-    }
-
-    // === MEDIA PLAYER ===
-    function togglePlay() {
-        state.isPlaying = !state.isPlaying;
-        document.getElementById('play-btn').textContent = state.isPlaying ? '⏸️' : '▶️';
-        showNotification('Media Player', state.isPlaying ? 'Playing' : 'Paused', 'success');
-    }
-
-    function previousTrack() {
-        showNotification('Media Player', 'Previous Track', 'success');
-    }
-
-    function nextTrack() {
-        showNotification('Media Player', 'Next Track', 'success');
-    }
-
-    function seekTrack(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('progress-fill').style.width = percent + '%';
-    }
-
-    // === BROWSER ===
-    function browserBack() {
-        showNotification('Browser', 'Going back', 'info');
-    }
-
-    function browserForward() {
-        showNotification('Browser', 'Going forward', 'info');
-    }
-
-    function browserGo() {
-        const url = document.getElementById('browser-url').value;
-        if (url) {
-            showNotification('Browser', `Navigating to ${url}`, 'info');
-        }
-    }
-
-    function openWebsite(type) {
-        const sites = {
-            'news': 'News Website',
-            'weather': 'Weather Forecast',
-            'email': 'Email Service',
-            'social': 'Social Media',
-            'video': 'Video Platform',
-            'health': 'Health Portal'
-        };
-        showNotification('Opening', sites[type], 'success');
-    }
-
-    // === PHONE ===
-    function dialNumber(num) {
-        state.dialerNumber += num;
-        document.getElementById('dialer-display').textContent = state.dialerNumber;
-    }
-
-    function clearDialer() {
-        state.dialerNumber = state.dialerNumber.slice(0, -1);
-        document.getElementById('dialer-display').textContent = state.dialerNumber;
-    }
-
-    function makeCall() {
-        if (state.dialerNumber) {
-            showNotification('Calling', state.dialerNumber, 'success');
-            speak(`Calling ${state.dialerNumber}`);
-        }
-    }
-
-    function endCall() {
-        showNotification('Call Ended', '', 'info');
-        state.dialerNumber = '';
-        document.getElementById('dialer-display').textContent = '';
-    }
-
-    function quickDial(contact) {
-        showNotification('Quick Dial', `Calling ${contact}`, 'success');
-        speak(`Calling ${contact}`);
-    }
-
-    // === NOTES ===
-    function createNewNote() {
-        showNotification('Notes', 'Creating new note', 'success');
-    }
-
-    function openNote(elem) {
-        const title = elem.querySelector('.note-title').textContent;
-        showNotification('Opening Note', title, 'info');
-    }
-
-    // === SETTINGS ===
-    function setClickMethod(method, elem) {
-        document.querySelectorAll('.option-btn').forEach(btn => {
-            if (btn.parentElement === elem.parentElement) {
-                btn.classList.remove('selected');
+            updateSentenceDisplay();
+            addToHistory(word);
+            wordCount++;
+            wordCountEl.textContent = wordCount;
+            speakBtn.disabled = false;
+            
+            if (autoSpeakCheck.checked) {
+                speakWord(word);
             }
+            
+            if (vibrateCheck.checked && 'vibrate' in navigator) {
+                navigator.vibrate(50);
+            }
+        }
+
+        // Update sentence display
+        function updateSentenceDisplay() {
+            if (sentence.length === 0) {
+                sentenceDisplay.innerHTML = '<span class="text-gray-500">Start signing to build your sentence...</span>';
+            } else {
+                sentenceDisplay.textContent = sentence.join(' ');
+            }
+        }
+
+        // Add to history
+        function addToHistory(word) {
+            const time = new Date().toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            const historyItem = document.createElement('div');
+            historyItem.className = 'bg-darker p-3 rounded-lg flex items-center justify-between slide-in';
+            historyItem.innerHTML = `
+                <div>
+                    <div class="font-medium text-sm">${word}</div>
+                    <div class="text-xs text-gray-500">${time}</div>
+                </div>
+                <button onclick="addWordToSentence('${word}')" class="text-purple-400 text-xs hover:text-purple-300">
+                    + Add
+                </button>
+            `;
+            
+            if (wordHistoryEl.querySelector('.text-gray-500')) {
+                wordHistoryEl.innerHTML = '';
+            }
+            
+            wordHistoryEl.insertBefore(historyItem, wordHistoryEl.firstChild);
+            
+            if (wordHistoryEl.children.length > 20) {
+                wordHistoryEl.removeChild(wordHistoryEl.lastChild);
+            }
+        }
+
+        // Text-to-speech
+        function speakWord(word) {
+            const rate = parseFloat(speechRateInput.value);
+            const selectedVoice = voices[voiceSelect.value];
+            
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(word);
+                utterance.rate = rate;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
+                
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function speakSentence() {
+            if (sentence.length > 0) {
+                const text = sentence.join(' ');
+                const rate = parseFloat(speechRateInput.value);
+                const selectedVoice = voices[voiceSelect.value];
+                
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = rate;
+                    utterance.pitch = 1;
+                    utterance.volume = 1;
+                    if (selectedVoice) {
+                        utterance.voice = selectedVoice;
+                    }
+                    
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+        }
+
+        // Camera controls
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: facingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                
+                video.srcObject = stream;
+                await video.play();
+                
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        if (isRunning) {
+                            await hands.send({ image: video });
+                        }
+                    },
+                    width: 1280,
+                    height: 720
+                });
+                
+                await camera.start();
+                
+                isRunning = true;
+                sessionStartTime = Date.now();
+                startSessionTimer();
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                flipBtn.disabled = false;
+                
+                statusDot.classList.remove('bg-red-500');
+                statusDot.classList.add('bg-green-500', 'pulse');
+                statusText.textContent = 'Active';
+            } catch (error) {
+                console.error('Camera error:', error);
+                alert('Could not access camera. Please grant permissions.');
+            }
+        }
+
+        function stopCamera() {
+            isRunning = false;
+            
+            if (camera) {
+                camera.stop();
+            }
+            
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            flipBtn.disabled = true;
+            currentWordEl.classList.add('hidden');
+            
+            statusDot.classList.remove('bg-green-500', 'pulse');
+            statusDot.classList.add('bg-yellow-500');
+            statusText.textContent = 'Stopped';
+        }
+
+        async function flipCamera() {
+            facingMode = facingMode === 'user' ? 'environment' : 'user';
+            if (isRunning) {
+                stopCamera();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                startCamera();
+            }
+        }
+
+        // Session timer
+        function startSessionTimer() {
+            setInterval(() => {
+                if (isRunning && sessionStartTime) {
+                    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    sessionTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        // Quick phrase functions
+        function addQuickPhrase(phrase) {
+            sentence.push(...phrase.split(' '));
+            updateSentenceDisplay();
+            speakBtn.disabled = false;
+            
+            if (autoSpeakCheck.checked) {
+                speakSentence();
+            }
+            
+            if (vibrateCheck.checked && 'vibrate' in navigator) {
+                navigator.vibrate(50);
+            }
+        }
+
+        // Utility functions
+        function copyToClipboard() {
+            if (sentence.length > 0) {
+                const text = sentence.join(' ');
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast('Copied to clipboard!');
+                });
+            }
+        }
+
+        async function shareText() {
+            if (sentence.length > 0) {
+                const text = sentence.join(' ');
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ text: text });
+                    } catch (err) {
+                        copyToClipboard();
+                    }
+                } else {
+                    copyToClipboard();
+                }
+            }
+        }
+
+        function downloadText() {
+            if (sentence.length > 0) {
+                const text = sentence.join(' ');
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sign-language-${Date.now()}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Downloaded!');
+            }
+        }
+
+        function translateText() {
+            if (sentence.length > 0) {
+                const text = encodeURIComponent(sentence.join(' '));
+                window.open(`https://translate.google.com/?sl=auto&tl=en&text=${text}`, '_blank');
+            }
+        }
+
+        function clearHistory() {
+            wordHistoryEl.innerHTML = '<div class="text-sm text-gray-500 text-center py-4">No words detected yet</div>';
+        }
+
+        function showToast(message) {
+            // Simple toast notification
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 2000);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        flipBtn.addEventListener('click', flipCamera);
+        speakBtn.addEventListener('click', speakSentence);
+        clearSentenceBtn.addEventListener('click', () => {
+            sentence = [];
+            updateSentenceDisplay();
+            speakBtn.disabled = true;
         });
-        elem.classList.add('selected');
-        
-        if (method === 'dwell') {
-            state.dwellEnabled = true;
-            state.squintEnabled = false;
-        } else if (method === 'squint') {
-            state.dwellEnabled = false;
-            state.squintEnabled = true;
-        } else {
-            state.dwellEnabled = true;
-            state.squintEnabled = true;
-        }
-        
-        showNotification('Click Method', `Set to ${method}`, 'success');
-    }
 
-    function setDwellTime(time, elem) {
-        document.querySelectorAll('.option-btn').forEach(btn => {
-            if (btn.parentElement === elem.parentElement) {
-                btn.classList.remove('selected');
-            }
+        // Initialize
+        window.addEventListener('load', () => {
+            initializeMediaPipe();
         });
-        elem.classList.add('selected');
-        CONFIG.DWELL_TIME = time;
-        showNotification('Dwell Time', `Set to ${time}ms`, 'success');
-    }
-
-    function adjustCursorSpeed(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('speed-fill').style.width = percent + '%';
-        
-        const speeds = ['Very Slow', 'Slow', 'Medium', 'Fast', 'Very Fast'];
-        const index = Math.floor((percent / 100) * speeds.length);
-        document.getElementById('speed-value').textContent = speeds[Math.min(index, speeds.length - 1)];
-        
-        CONFIG.SENSITIVITY_X = 1 + (percent / 100) * 3;
-        CONFIG.SENSITIVITY_Y = 1.5 + (percent / 100) * 3.5;
-    }
-
-    function adjustSmoothing(event) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const percent = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-        document.getElementById('smoothing-fill').style.width = percent + '%';
-        document.getElementById('smoothing-value').textContent = percent + '%';
-        
-        CONFIG.SMOOTHING = 0.05 + (percent / 100) * 0.3;
-    }
-
-    function toggleVoice() {
-        state.voiceEnabled = !state.voiceEnabled;
-        document.getElementById('voice-toggle').classList.toggle('on');
-        showNotification('Voice Feedback', state.voiceEnabled ? 'Enabled' : 'Disabled', 'info');
-    }
-
-    function toggleSound() {
-        state.soundEnabled = !state.soundEnabled;
-        document.getElementById('sound-toggle').classList.toggle('on');
-        showNotification('Sound Effects', state.soundEnabled ? 'Enabled' : 'Disabled', 'info');
-    }
-
-    function toggleContrast() {
-        const toggle = document.getElementById('contrast-toggle');
-        toggle.classList.toggle('on');
-        document.body.style.filter = toggle.classList.contains('on') ? 'contrast(1.2)' : '';
-        showNotification('High Contrast', toggle.classList.contains('on') ? 'Enabled' : 'Disabled', 'info');
-    }
-
-    function setCursorSize(size, elem) {
-        document.querySelectorAll('.option-btn').forEach(btn => {
-            if (btn.parentElement === elem.parentElement) {
-                btn.classList.remove('selected');
-            }
-        });
-        elem.classList.add('selected');
-        
-        const sizes = { small: '28px', medium: '36px', large: '48px' };
-        cursor.style.width = sizes[size];
-        cursor.style.height = sizes[size];
-        showNotification('Cursor Size', `Set to ${size}`, 'success');
-    }
-
-    // === EMERGENCY ===
-    function emergency() {
-        const message = "EMERGENCY! I need immediate assistance right now!";
-        speak(message);
-        showNotification('🚨 EMERGENCY ALERT', 'Help request sent to all contacts', 'success');
-        
-        // Flash effect
-        let flashCount = 0;
-        const flashInterval = setInterval(() => {
-            document.body.style.background = flashCount % 2 === 0 ? '#F44336' : '';
-            flashCount++;
-            if (flashCount >= 6) clearInterval(flashInterval);
-        }, 200);
-    }
-
-    // === NOTIFICATIONS ===
-    function showNotification(title, message, type = 'success') {
-        // Remove existing notification
-        const existing = document.querySelector('.notification');
-        if (existing) existing.remove();
-        
-        const notif = document.createElement('div');
-        notif.className = `notification ${type}`;
-        const icon = type === 'success' ? '✅' : type === 'info' ? 'ℹ️' : '⚠️';
-        notif.innerHTML = `
-            <div class="notification-header">
-                <div class="notification-icon">${icon}</div>
-                <div class="notification-title">${title}</div>
-            </div>
-            ${message ? `<div class="notification-message">${message}</div>` : ''}
-        `;
-        document.body.appendChild(notif);
-        
-        setTimeout(() => {
-            notif.style.opacity = '0';
-            notif.style.transform = 'translateX(500px)';
-            setTimeout(() => notif.remove(), 400);
-        }, 3000);
-    }
-
-    // === SOUND EFFECTS ===
-    function playClickSound() {
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 1000;
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.08);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.08);
-        } catch(e) {
-            // Audio context not available
-        }
-    }
-</script>
+    </script>
 </body>
 </html>
