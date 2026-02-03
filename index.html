@@ -3,49 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sign Language - Word Recognition</title>
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SignSpeak Pro - Sign Language to Speech</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * {
             -webkit-tap-highlight-color: transparent;
+            touch-action: pan-y;
+        }
+        
+        :root {
+            --primary: #8b5cf6;
+            --primary-dark: #7c3aed;
+            --secondary: #6366f1;
+            --accent: #ec4899;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
         }
         
         body {
-            background: #0a0a0a;
-            min-height: 100vh;
-            overflow-x: hidden;
+            background: #000000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overscroll-behavior: none;
         }
         
-        .bg-dark {
-            background: #111111;
+        /* Smooth Animations */
+        * {
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .bg-darker {
-            background: #0d0d0d;
+        /* Glassmorphism */
+        .glass {
+            background: rgba(17, 17, 17, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         
+        .glass-light {
+            background: rgba(30, 30, 30, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Card Styles */
         .card {
-            background: linear-gradient(145deg, #1a1a1a, #151515);
+            background: linear-gradient(145deg, #1a1a1a 0%, #141414 100%);
             border: 1px solid #252525;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
         }
         
-        .card-hover {
-            transition: all 0.3s ease;
+        .card-interactive {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .card-hover:active {
+        .card-interactive:active {
             transform: scale(0.98);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
         }
         
+        /* Video Container */
         #videoContainer {
             position: relative;
             width: 100%;
-            aspect-ratio: 4/3;
+            aspect-ratio: 16/9;
             background: #000;
             overflow: hidden;
+            border-radius: 1rem;
         }
         
         #video {
@@ -64,184 +92,546 @@
             transform: scaleX(-1);
         }
         
-        .word-badge {
-            animation: wordPop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        /* Gesture Detection Overlay */
+        .gesture-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
         }
         
-        @keyframes wordPop {
-            0% { transform: scale(0) rotate(-10deg); opacity: 0; }
-            50% { transform: scale(1.1) rotate(5deg); }
-            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        .detection-box {
+            position: absolute;
+            border: 3px solid var(--primary);
+            border-radius: 12px;
+            animation: pulseBox 1.5s ease-in-out infinite;
         }
         
+        @keyframes pulseBox {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.02); }
+        }
+        
+        /* Confidence Meter */
+        .confidence-bar {
+            height: 4px;
+            background: linear-gradient(90deg, 
+                var(--error) 0%, 
+                var(--warning) 50%, 
+                var(--success) 100%);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        
+        /* Word Display */
+        .word-display {
+            animation: wordReveal 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+        
+        @keyframes wordReveal {
+            0% { 
+                transform: scale(0) rotate(-15deg); 
+                opacity: 0;
+                filter: blur(10px);
+            }
+            60% { 
+                transform: scale(1.15) rotate(5deg); 
+                opacity: 1;
+            }
+            100% { 
+                transform: scale(1) rotate(0); 
+                opacity: 1;
+                filter: blur(0);
+            }
+        }
+        
+        /* Sentence Builder */
+        .sentence-text {
+            min-height: 120px;
+            max-height: 300px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        
+        .sentence-text::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .sentence-text::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .sentence-text::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+        
+        /* Word Chip */
+        .word-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(135deg, #1e1e1e, #181818);
+            border: 1px solid #2a2a2a;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.75rem;
+            margin: 0.25rem;
+            animation: chipIn 0.3s ease-out;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .word-chip:hover {
+            background: linear-gradient(135deg, #252525, #1f1f1f);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .word-chip:active {
+            transform: scale(0.95);
+        }
+        
+        @keyframes chipIn {
+            from { 
+                opacity: 0; 
+                transform: translateY(10px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+        
+        /* Buttons */
+        .btn {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .btn:active::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+        
+        .btn-primary:hover {
+            box-shadow: 0 6px 25px rgba(139, 92, 246, 0.4);
+            transform: translateY(-2px);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .btn-secondary:hover {
+            background: #202020;
+            border-color: #333;
+        }
+        
+        .btn-icon {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Gesture Cards */
+        .gesture-card {
+            background: linear-gradient(135deg, #1a1a1a, #151515);
+            border: 1px solid #222;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .gesture-card:hover {
+            background: linear-gradient(135deg, #202020, #1a1a1a);
+            border-color: var(--primary);
+            transform: translateX(4px);
+        }
+        
+        .gesture-card.active {
+            background: linear-gradient(135deg, #2a1a3a, #1a1430);
+            border-color: var(--primary);
+        }
+        
+        /* Stats */
+        .stat-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #141414 100%);
+            border-left: 3px solid var(--primary);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                var(--primary), 
+                transparent);
+            animation: shimmer 2s ease-in-out infinite;
+        }
+        
+        @keyframes shimmer {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+        
+        /* Modal */
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 1.5rem;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from { 
+                transform: translateY(100px); 
+                opacity: 0; 
+            }
+            to { 
+                transform: translateY(0); 
+                opacity: 1; 
+            }
+        }
+        
+        /* Bottom Sheet */
+        .bottom-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 50;
+        }
+        
+        .bottom-sheet.active {
+            transform: translateY(0);
+        }
+        
+        .sheet-handle {
+            width: 40px;
+            height: 4px;
+            background: #444;
+            border-radius: 2px;
+            margin: 0 auto 1rem;
+        }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: linear-gradient(135deg, #1a1a1a, #141414);
+            border: 1px solid #333;
+            padding: 1rem 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            animation: toastIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+        }
+        
+        @keyframes toastIn {
+            to { transform: translateX(-50%) translateY(0); }
+        }
+        
+        .toast.out {
+            animation: toastOut 0.3s ease forwards;
+        }
+        
+        @keyframes toastOut {
+            to { 
+                transform: translateX(-50%) translateY(100px); 
+                opacity: 0;
+            }
+        }
+        
+        /* Progress Ring */
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.5s ease;
+        }
+        
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            box-shadow: 0 8px 30px rgba(139, 92, 246, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 40;
+        }
+        
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.5);
+        }
+        
+        .fab:active {
+            transform: scale(0.95);
+        }
+        
+        /* Loading Spinner */
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Pulse Animation */
         .pulse {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
         
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
+            50% { opacity: 0.5; }
         }
         
-        .glow {
-            box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
-        }
-        
-        .btn {
-            transition: all 0.2s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .btn:active {
-            transform: scale(0.95);
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-        }
-        
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #7c3aed, #4f46e5);
-        }
-        
-        .btn-secondary {
-            background: #1f1f1f;
-            border: 1px solid #2a2a2a;
-        }
-        
-        .btn-secondary:hover {
-            background: #252525;
-            border-color: #333;
-        }
-        
-        .scroll-container {
-            scrollbar-width: thin;
-            scrollbar-color: #333 transparent;
-        }
-        
-        .scroll-container::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .scroll-container::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        
-        .scroll-container::-webkit-scrollbar-thumb {
-            background: #333;
-            border-radius: 2px;
-        }
-        
-        .word-chip {
-            background: linear-gradient(135deg, #1e1e1e, #181818);
-            border: 1px solid #2a2a2a;
-            transition: all 0.2s ease;
-        }
-        
-        .word-chip:active {
-            background: linear-gradient(135deg, #252525, #1f1f1f);
-        }
-        
-        .gesture-card {
-            background: #161616;
-            border: 1px solid #222;
-            transition: all 0.2s ease;
-        }
-        
-        .gesture-card:active {
-            background: #1a1a1a;
-            border-color: #8b5cf6;
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, #1a1a1a 0%, #141414 100%);
-            border-left: 3px solid #8b5cf6;
-        }
-        
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        .slide-in {
-            animation: slideIn 0.3s ease-out;
-        }
-        
+        /* Gradient Text */
         .gradient-text {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
+        
+        /* Scrollbar Styles */
+        .custom-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .fab {
+                bottom: 5rem;
+                right: 1rem;
+                width: 48px;
+                height: 48px;
+            }
+        }
+        
+        /* Safe Area Insets for iOS */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            .safe-bottom {
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+        }
+        
+        /* Hide elements on mobile */
+        @media (max-width: 1024px) {
+            .hide-mobile {
+                display: none !important;
+            }
+        }
+        
+        /* Improved touch targets */
+        @media (pointer: coarse) {
+            button, .btn {
+                min-height: 44px;
+            }
+        }
     </style>
 </head>
-<body class="text-white">
-    <div class="max-w-7xl mx-auto px-4 py-4 md:py-6">
-        <!-- Header -->
-        <div class="card rounded-2xl p-4 md:p-6 mb-4">
+<body class="text-white select-none">
+    <!-- Header -->
+    <header class="sticky top-0 z-30 glass safe-top">
+        <div class="max-w-7xl mx-auto px-4 py-3">
             <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-2xl md:text-4xl font-bold gradient-text mb-1">
-                        Sign Language
-                    </h1>
-                    <p class="text-gray-400 text-sm md:text-base">One gesture, one word - instant speech</p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                        <span class="text-xl">🤟</span>
+                    </div>
+                    <div>
+                        <h1 class="text-lg md:text-xl font-bold gradient-text">SignSpeak Pro</h1>
+                        <p class="text-xs text-gray-400 hidden md:block">Real-time sign language recognition</p>
+                    </div>
                 </div>
-                <button id="menuBtn" class="btn btn-secondary p-3 rounded-xl">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                    </svg>
-                </button>
+                <div class="flex items-center gap-2">
+                    <button id="tutorialBtn" class="btn btn-secondary btn-icon rounded-xl">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </button>
+                    <button id="settingsBtn" class="btn btn-secondary btn-icon rounded-xl">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
         </div>
+    </header>
 
+    <main class="max-w-7xl mx-auto px-4 py-4 pb-24">
         <div class="grid lg:grid-cols-3 gap-4">
             <!-- Main Camera Section -->
             <div class="lg:col-span-2 space-y-4">
-                <!-- Video Feed -->
+                <!-- Camera Feed -->
                 <div class="card rounded-2xl overflow-hidden">
-                    <div id="videoContainer" class="relative">
+                    <div id="videoContainer">
                         <video id="video" autoplay playsinline muted></video>
                         <canvas id="canvas"></canvas>
                         
-                        <!-- Status Indicator -->
-                        <div class="absolute top-3 right-3 bg-black bg-opacity-60 backdrop-blur-sm px-3 py-2 rounded-full flex items-center gap-2">
-                            <div id="statusDot" class="w-2 h-2 rounded-full bg-red-500"></div>
-                            <span id="statusText" class="text-xs font-medium">Ready</span>
-                        </div>
-                        
-                        <!-- Current Word Display -->
-                        <div id="currentWord" class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black via-black to-transparent hidden">
-                            <div class="text-center">
-                                <div class="text-sm text-gray-400 mb-2">Detected</div>
-                                <div class="text-5xl md:text-7xl font-bold word-badge" id="wordDisplay">-</div>
+                        <!-- Detection Overlay -->
+                        <div class="gesture-overlay">
+                            <!-- Status Badge -->
+                            <div class="absolute top-3 left-3 glass-light px-3 py-2 rounded-full flex items-center gap-2">
+                                <div id="statusDot" class="w-2 h-2 rounded-full bg-red-500"></div>
+                                <span id="statusText" class="text-xs font-medium">Offline</span>
+                            </div>
+                            
+                            <!-- FPS Counter -->
+                            <div class="absolute top-3 right-3 glass-light px-3 py-2 rounded-lg text-xs font-mono">
+                                <span id="fpsCounter">0</span> FPS
+                            </div>
+                            
+                            <!-- Confidence Meter -->
+                            <div id="confidenceMeter" class="absolute bottom-3 left-3 right-3 hidden">
+                                <div class="glass-light rounded-lg p-3">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-medium">Confidence</span>
+                                        <span id="confidenceValue" class="text-xs font-bold">0%</span>
+                                    </div>
+                                    <div class="w-full bg-gray-800 rounded-full h-1">
+                                        <div id="confidenceBar" class="confidence-bar" style="width: 0%"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
-                        <!-- Gesture Hint -->
-                        <div id="gestureHint" class="absolute top-3 left-3 bg-purple-600 bg-opacity-20 backdrop-blur-sm px-4 py-2 rounded-xl border border-purple-500 border-opacity-30">
-                            <div class="text-xs text-purple-300">👋 Show a gesture</div>
+                        <!-- Word Display Overlay -->
+                        <div id="wordOverlay" class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent hidden">
+                            <div class="text-center">
+                                <div class="text-sm text-gray-400 mb-2 uppercase tracking-wide">Detected</div>
+                                <div id="wordDisplay" class="text-5xl md:text-7xl font-black word-display gradient-text">-</div>
+                                <div id="gestureEmoji" class="text-4xl mt-2">👋</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- Camera Controls -->
-                    <div class="p-4 bg-darker border-t border-gray-800">
+                    <div class="p-4 bg-black bg-opacity-40 border-t border-gray-800">
                         <div class="flex gap-2">
-                            <button id="startBtn" class="btn btn-primary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base">
-                                📸 Start Camera
+                            <button id="startBtn" class="btn btn-primary flex-1 py-3 rounded-xl font-semibold text-sm">
+                                <span class="flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
+                                    Start Camera
+                                </span>
                             </button>
-                            <button id="stopBtn" class="btn btn-secondary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base opacity-50" disabled>
-                                ⏸️ Stop
+                            <button id="stopBtn" class="btn btn-secondary flex-1 py-3 rounded-xl font-semibold text-sm opacity-50" disabled>
+                                <span class="flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                                    </svg>
+                                    Stop
+                                </span>
                             </button>
-                            <button id="flipBtn" class="btn btn-secondary p-3 rounded-xl" disabled>
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <button id="flipBtn" class="btn btn-secondary btn-icon rounded-xl" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                            </button>
+                            <button id="fullscreenBtn" class="btn btn-secondary btn-icon rounded-xl hide-mobile">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
                                 </svg>
                             </button>
                         </div>
@@ -250,60 +640,93 @@
 
                 <!-- Sentence Builder -->
                 <div class="card rounded-2xl p-4 md:p-6">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-lg md:text-xl font-bold">Your Sentence</h2>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold flex items-center gap-2">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                            </svg>
+                            Your Sentence
+                        </h2>
                         <div class="flex gap-2">
-                            <button id="speakBtn" class="btn btn-secondary px-4 py-2 rounded-lg text-sm font-medium" disabled>
-                                🔊 Speak
+                            <button id="speakBtn" class="btn btn-secondary px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2" disabled>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                                </svg>
+                                Speak
                             </button>
                             <button id="clearSentenceBtn" class="btn btn-secondary px-4 py-2 rounded-lg text-sm font-medium">
-                                🗑️
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
                             </button>
                         </div>
                     </div>
                     
-                    <div id="sentenceDisplay" class="bg-darker rounded-xl p-4 min-h-[80px] text-lg md:text-2xl font-medium border border-gray-800 mb-4">
+                    <div id="sentenceDisplay" class="sentence-text bg-black bg-opacity-40 rounded-xl p-4 border border-gray-800 text-lg md:text-2xl font-medium custom-scroll">
                         <span class="text-gray-500">Start signing to build your sentence...</span>
                     </div>
                     
-                    <!-- Quick Actions -->
-                    <div class="flex gap-2 overflow-x-auto pb-2 scroll-container">
-                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="copyToClipboard()">
-                            📋 Copy
+                    <!-- Action Buttons -->
+                    <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <button onclick="copyToClipboard()" class="btn btn-secondary py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            Copy
                         </button>
-                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="shareText()">
-                            📤 Share
+                        <button onclick="shareText()" class="btn btn-secondary py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                            </svg>
+                            Share
                         </button>
-                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="downloadText()">
-                            💾 Save
+                        <button onclick="downloadText()" class="btn btn-secondary py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            Save
                         </button>
-                        <button class="btn btn-secondary px-4 py-2 rounded-lg text-sm whitespace-nowrap" onclick="translateText()">
-                            🌐 Translate
+                        <button onclick="translateText()" class="btn btn-secondary py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                            </svg>
+                            Translate
                         </button>
                     </div>
                 </div>
 
                 <!-- Quick Phrases -->
                 <div class="card rounded-2xl p-4 md:p-6">
-                    <h2 class="text-lg font-bold mb-3">Quick Phrases</h2>
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        Quick Phrases
+                    </h2>
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('Good morning')">
-                            ☀️ Good morning
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('Hello')">
+                            <span class="text-xl">👋</span>
+                            <span>Hello</span>
                         </button>
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('Thank you')">
-                            🙏 Thank you
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('Thank you')">
+                            <span class="text-xl">🙏</span>
+                            <span>Thank you</span>
                         </button>
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('I need help')">
-                            🆘 I need help
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('Please')">
+                            <span class="text-xl">🙌</span>
+                            <span>Please</span>
                         </button>
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('How are you?')">
-                            💭 How are you?
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('Good morning')">
+                            <span class="text-xl">☀️</span>
+                            <span>Good morning</span>
                         </button>
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('See you later')">
-                            👋 See you later
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('I need help')">
+                            <span class="text-xl">🆘</span>
+                            <span>Need help</span>
                         </button>
-                        <button class="word-chip px-4 py-3 rounded-xl text-sm font-medium" onclick="addQuickPhrase('I love you')">
-                            ❤️ I love you
+                        <button class="card-interactive glass-light p-3 rounded-xl text-sm font-medium flex items-center gap-2" onclick="addQuickPhrase('How are you?')">
+                            <span class="text-xl">💭</span>
+                            <span>How are you?</span>
                         </button>
                     </div>
                 </div>
@@ -311,176 +734,158 @@
 
             <!-- Sidebar -->
             <div class="space-y-4">
-                <!-- Statistics -->
+                <!-- Stats Dashboard -->
                 <div class="card rounded-2xl p-4 md:p-6">
-                    <h2 class="text-lg font-bold mb-4">Session Stats</h2>
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        Session Stats
+                    </h2>
                     <div class="space-y-3">
-                        <div class="stat-card p-3 rounded-lg">
-                            <div class="text-2xl font-bold gradient-text" id="wordCount">0</div>
-                            <div class="text-xs text-gray-400 mt-1">Words Detected</div>
+                        <div class="stat-card p-4 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-3xl font-black gradient-text" id="wordCount">0</div>
+                                    <div class="text-xs text-gray-400 mt-1">Words Detected</div>
+                                </div>
+                                <div class="text-3xl">📝</div>
+                            </div>
                         </div>
-                        <div class="stat-card p-3 rounded-lg">
-                            <div class="text-2xl font-bold text-green-400" id="accuracy">100%</div>
-                            <div class="text-xs text-gray-400 mt-1">Accuracy</div>
+                        <div class="stat-card p-4 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-3xl font-black text-green-400" id="accuracy">100%</div>
+                                    <div class="text-xs text-gray-400 mt-1">Accuracy</div>
+                                </div>
+                                <div class="text-3xl">🎯</div>
+                            </div>
                         </div>
-                        <div class="stat-card p-3 rounded-lg">
-                            <div class="text-2xl font-bold text-blue-400" id="sessionTime">0:00</div>
-                            <div class="text-xs text-gray-400 mt-1">Session Time</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Settings -->
-                <div class="card rounded-2xl p-4 md:p-6">
-                    <h2 class="text-lg font-bold mb-4">Settings</h2>
-                    
-                    <div class="space-y-4">
-                        <!-- Speech Rate -->
-                        <div>
-                            <label class="text-sm text-gray-400 mb-2 block">Speech Speed</label>
-                            <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="1" 
-                                   class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
-                            <div class="text-xs text-gray-500 mt-1" id="rateValue">1.0x Normal</div>
-                        </div>
-                        
-                        <!-- Voice Selection -->
-                        <div>
-                            <label class="text-sm text-gray-400 mb-2 block">Voice</label>
-                            <select id="voiceSelect" class="w-full bg-darker border border-gray-700 rounded-lg px-3 py-2 text-sm">
-                                <option>Loading voices...</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Auto Options -->
-                        <div class="space-y-2">
-                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
-                                <input type="checkbox" id="autoSpeak" class="w-4 h-4 accent-purple-600">
-                                <span class="text-sm">Auto-speak words</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
-                                <input type="checkbox" id="showLandmarks" checked class="w-4 h-4 accent-purple-600">
-                                <span class="text-sm">Show hand tracking</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
-                                <input type="checkbox" id="autoSpace" checked class="w-4 h-4 accent-purple-600">
-                                <span class="text-sm">Auto-add spaces</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-darker">
-                                <input type="checkbox" id="vibrate" checked class="w-4 h-4 accent-purple-600">
-                                <span class="text-sm">Vibration feedback</span>
-                            </label>
+                        <div class="stat-card p-4 rounded-xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-3xl font-black text-blue-400" id="sessionTime">0:00</div>
+                                    <div class="text-xs text-gray-400 mt-1">Session Time</div>
+                                </div>
+                                <div class="text-3xl">⏱️</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Gesture Guide -->
                 <div class="card rounded-2xl p-4 md:p-6">
-                    <h2 class="text-lg font-bold mb-4">Gesture Guide</h2>
-                    <div class="space-y-2 max-h-[400px] overflow-y-auto scroll-container">
-                        <div class="gesture-card p-3 rounded-lg">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                        </svg>
+                        Gesture Guide
+                    </h2>
+                    <div class="space-y-2 max-h-[500px] overflow-y-auto custom-scroll pr-2">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">👋</div>
-                                <div>
-                                    <div class="font-medium text-sm">Hello</div>
-                                    <div class="text-xs text-gray-400">Open hand wave</div>
+                                <div class="text-3xl">👋</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Hello / Hi</div>
+                                    <div class="text-xs text-gray-400">Open hand, spread fingers</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">👍</div>
-                                <div>
-                                    <div class="font-medium text-sm">Yes / Good</div>
+                                <div class="text-3xl">👍</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Yes / Good</div>
                                     <div class="text-xs text-gray-400">Thumbs up</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">👎</div>
-                                <div>
-                                    <div class="font-medium text-sm">No / Bad</div>
+                                <div class="text-3xl">👎</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">No / Bad</div>
                                     <div class="text-xs text-gray-400">Thumbs down</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">✌️</div>
-                                <div>
-                                    <div class="font-medium text-sm">Peace / Okay</div>
-                                    <div class="text-xs text-gray-400">Peace sign</div>
+                                <div class="text-3xl">✌️</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Okay / Peace</div>
+                                    <div class="text-xs text-gray-400">Peace sign (2 fingers)</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">✋</div>
-                                <div>
-                                    <div class="font-medium text-sm">Stop / Wait</div>
+                                <div class="text-3xl">✋</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Stop / Wait</div>
                                     <div class="text-xs text-gray-400">Open palm forward</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">👌</div>
-                                <div>
-                                    <div class="font-medium text-sm">Okay / Perfect</div>
-                                    <div class="text-xs text-gray-400">OK sign</div>
+                                <div class="text-3xl">👌</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Perfect / OK</div>
+                                    <div class="text-xs text-gray-400">OK hand sign</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">🤙</div>
-                                <div>
-                                    <div class="font-medium text-sm">Call / Contact</div>
-                                    <div class="text-xs text-gray-400">Hang loose gesture</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="gesture-card p-3 rounded-lg">
-                            <div class="flex items-center gap-3">
-                                <div class="text-2xl">🙏</div>
-                                <div>
-                                    <div class="font-medium text-sm">Please / Thanks</div>
-                                    <div class="text-xs text-gray-400">Hands together</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="gesture-card p-3 rounded-lg">
-                            <div class="flex items-center gap-3">
-                                <div class="text-2xl">🤘</div>
-                                <div>
-                                    <div class="font-medium text-sm">Love / Rock</div>
-                                    <div class="text-xs text-gray-400">Rock hand sign</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="gesture-card p-3 rounded-lg">
-                            <div class="flex items-center gap-3">
-                                <div class="text-2xl">✊</div>
-                                <div>
-                                    <div class="font-medium text-sm">Strong / Fight</div>
-                                    <div class="text-xs text-gray-400">Closed fist</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="gesture-card p-3 rounded-lg">
-                            <div class="flex items-center gap-3">
-                                <div class="text-2xl">👉</div>
-                                <div>
-                                    <div class="font-medium text-sm">You / That</div>
+                                <div class="text-3xl">👉</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">You / That</div>
                                     <div class="text-xs text-gray-400">Pointing finger</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="gesture-card p-3 rounded-lg">
+                        <div class="gesture-card p-3 rounded-xl">
                             <div class="flex items-center gap-3">
-                                <div class="text-2xl">🤚</div>
-                                <div>
-                                    <div class="font-medium text-sm">I / Me</div>
+                                <div class="text-3xl">✊</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Strong / Power</div>
+                                    <div class="text-xs text-gray-400">Closed fist</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">🤘</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Love / Rock</div>
+                                    <div class="text-xs text-gray-400">Rock hand sign</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">🤙</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Call / Contact</div>
+                                    <div class="text-xs text-gray-400">Hang loose gesture</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">🙏</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">Please / Thanks</div>
+                                    <div class="text-xs text-gray-400">Hands together</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gesture-card p-3 rounded-xl">
+                            <div class="flex items-center gap-3">
+                                <div class="text-3xl">🖐️</div>
+                                <div class="flex-1">
+                                    <div class="font-semibold text-sm">I / Me</div>
                                     <div class="text-xs text-gray-400">Point to yourself</div>
                                 </div>
                             </div>
@@ -488,26 +893,189 @@
                     </div>
                 </div>
 
-                <!-- History -->
-                <div class="card rounded-2xl p-4 md:p-6">
+                <!-- Word History -->
+                <div class="card rounded-2xl p-4 md:p-6 hide-mobile">
                     <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-lg font-bold">Word History</h2>
-                        <button onclick="clearHistory()" class="text-xs text-gray-400 hover:text-white">Clear</button>
+                        <h2 class="text-lg font-bold flex items-center gap-2">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            History
+                        </h2>
+                        <button onclick="clearHistory()" class="text-xs text-gray-400 hover:text-white transition">
+                            Clear
+                        </button>
                     </div>
-                    <div id="wordHistory" class="space-y-2 max-h-[300px] overflow-y-auto scroll-container">
+                    <div id="wordHistory" class="space-y-2 max-h-[300px] overflow-y-auto custom-scroll">
                         <div class="text-sm text-gray-500 text-center py-4">No words detected yet</div>
                     </div>
                 </div>
             </div>
         </div>
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content w-full max-w-md p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">Settings</h2>
+                <button onclick="closeSettings()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <!-- Speech Settings -->
+                <div>
+                    <h3 class="font-semibold mb-3 text-purple-400">Speech</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-gray-400 mb-2 block">Speech Speed</label>
+                            <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="1" 
+                                   class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                            <div class="text-xs text-gray-500 mt-1" id="rateValue">1.0x Normal</div>
+                        </div>
+                        
+                        <div>
+                            <label class="text-sm text-gray-400 mb-2 block">Voice</label>
+                            <select id="voiceSelect" class="w-full bg-black border border-gray-700 rounded-lg px-4 py-3 text-sm">
+                                <option>Loading voices...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Detection Settings -->
+                <div>
+                    <h3 class="font-semibold mb-3 text-purple-400">Detection</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-between p-3 rounded-lg hover:bg-white hover:bg-opacity-5 cursor-pointer">
+                            <span class="text-sm">Show hand landmarks</span>
+                            <input type="checkbox" id="showLandmarks" checked class="w-5 h-5 accent-purple-600">
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-lg hover:bg-white hover:bg-opacity-5 cursor-pointer">
+                            <span class="text-sm">Show confidence meter</span>
+                            <input type="checkbox" id="showConfidence" checked class="w-5 h-5 accent-purple-600">
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-lg hover:bg-white hover:bg-opacity-5 cursor-pointer">
+                            <span class="text-sm">Auto-speak words</span>
+                            <input type="checkbox" id="autoSpeak" class="w-5 h-5 accent-purple-600">
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-lg hover:bg-white hover:bg-opacity-5 cursor-pointer">
+                            <span class="text-sm">Auto-add spaces</span>
+                            <input type="checkbox" id="autoSpace" checked class="w-5 h-5 accent-purple-600">
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-lg hover:bg-white hover:bg-opacity-5 cursor-pointer">
+                            <span class="text-sm">Vibration feedback</span>
+                            <input type="checkbox" id="vibrate" checked class="w-5 h-5 accent-purple-600">
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Sensitivity -->
+                <div>
+                    <h3 class="font-semibold mb-3 text-purple-400">Sensitivity</h3>
+                    <div>
+                        <label class="text-sm text-gray-400 mb-2 block">Detection Threshold</label>
+                        <input type="range" id="detectionThreshold" min="0.5" max="1" step="0.05" value="0.75" 
+                               class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                        <div class="text-xs text-gray-500 mt-1" id="thresholdValue">75%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <button onclick="closeSettings()" class="btn btn-primary w-full py-3 rounded-xl font-semibold mt-6">
+                Done
+            </button>
+        </div>
+    </div>
+
+    <!-- Tutorial Modal -->
+    <div id="tutorialModal" class="modal">
+        <div class="modal-content w-full max-w-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">How to Use SignSpeak Pro</h2>
+                <button onclick="closeTutorial()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <div class="glass-light rounded-xl p-4">
+                    <div class="flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-xl font-bold">
+                            1
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">Start Your Camera</h3>
+                            <p class="text-sm text-gray-400">Click the "Start Camera" button and allow camera access. Make sure you're in a well-lit area.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="glass-light rounded-xl p-4">
+                    <div class="flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-xl font-bold">
+                            2
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">Show Your Gesture</h3>
+                            <p class="text-sm text-gray-400">Hold your hand clearly in front of the camera and make a gesture from the guide. Hold it steady for 1-2 seconds.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="glass-light rounded-xl p-4">
+                    <div class="flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-xl font-bold">
+                            3
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">Build Your Sentence</h3>
+                            <p class="text-sm text-gray-400">Detected words will appear in your sentence. Continue adding more gestures to build complete sentences.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="glass-light rounded-xl p-4">
+                    <div class="flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-xl font-bold">
+                            4
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">Speak It Out</h3>
+                            <p class="text-sm text-gray-400">Click the "Speak" button to hear your sentence read aloud. You can also copy, share, or save it.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-purple-600 bg-opacity-10 border border-purple-600 border-opacity-30 rounded-xl p-4">
+                    <h3 class="font-semibold mb-2 text-purple-400">💡 Pro Tips</h3>
+                    <ul class="text-sm text-gray-300 space-y-1">
+                        <li>• Keep your hand within the camera frame</li>
+                        <li>• Make gestures clearly and hold them steady</li>
+                        <li>• Use quick phrases for common words</li>
+                        <li>• Enable auto-speak in settings for instant feedback</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <button onclick="closeTutorial()" class="btn btn-primary w-full py-3 rounded-xl font-semibold mt-6">
+                Got It!
+            </button>
+        </div>
     </div>
 
     <script>
-        // Global variables
-        let hands;
-        let camera;
+        // ============================================
+        // GLOBAL VARIABLES & INITIALIZATION
+        // ============================================
+        let hands, camera;
         let sentence = [];
-        let detectedWords = [];
         let lastDetectedWord = '';
         let lastDetectionTime = 0;
         let isRunning = false;
@@ -515,33 +1083,75 @@
         let wordCount = 0;
         let facingMode = 'user';
         let voices = [];
-
-        // DOM elements
+        let fps = 0;
+        let frameCount = 0;
+        let lastFpsTime = Date.now();
+        let gestureConfidence = 0;
+        
+        // Smoothing for gesture detection
+        let gestureHistory = [];
+        const GESTURE_HISTORY_LENGTH = 5;
+        const CONFIDENCE_THRESHOLD = 0.75;
+        const HOLD_TIME = 1200; // ms to hold gesture before detection
+        
+        // DOM Elements
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const flipBtn = document.getElementById('flipBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
         const speakBtn = document.getElementById('speakBtn');
         const clearSentenceBtn = document.getElementById('clearSentenceBtn');
         const sentenceDisplay = document.getElementById('sentenceDisplay');
-        const currentWordEl = document.getElementById('currentWord');
-        const wordDisplayEl = document.getElementById('wordDisplay');
+        const wordOverlay = document.getElementById('wordOverlay');
+        const wordDisplay = document.getElementById('wordDisplay');
+        const gestureEmoji = document.getElementById('gestureEmoji');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
+        const fpsCounter = document.getElementById('fpsCounter');
+        const confidenceMeter = document.getElementById('confidenceMeter');
+        const confidenceBar = document.getElementById('confidenceBar');
+        const confidenceValue = document.getElementById('confidenceValue');
         const wordCountEl = document.getElementById('wordCount');
         const sessionTimeEl = document.getElementById('sessionTime');
         const wordHistoryEl = document.getElementById('wordHistory');
         const speechRateInput = document.getElementById('speechRate');
         const rateValueEl = document.getElementById('rateValue');
         const voiceSelect = document.getElementById('voiceSelect');
-        const autoSpeakCheck = document.getElementById('autoSpeak');
         const showLandmarksCheck = document.getElementById('showLandmarks');
+        const showConfidenceCheck = document.getElementById('showConfidence');
+        const autoSpeakCheck = document.getElementById('autoSpeak');
         const autoSpaceCheck = document.getElementById('autoSpace');
         const vibrateCheck = document.getElementById('vibrate');
+        const detectionThresholdInput = document.getElementById('detectionThreshold');
+        const thresholdValueEl = document.getElementById('thresholdValue');
+        const settingsModal = document.getElementById('settingsModal');
+        const tutorialModal = document.getElementById('tutorialModal');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const tutorialBtn = document.getElementById('tutorialBtn');
 
-        // Load voices
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        
+        function initializeMediaPipe() {
+            hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.6
+            });
+
+            hands.onResults(onResults);
+            updateStatus('ready', 'Ready to start');
+        }
+
         function loadVoices() {
             voices = window.speechSynthesis.getVoices();
             if (voices.length > 0) {
@@ -550,7 +1160,7 @@
                     const option = document.createElement('option');
                     option.value = index;
                     option.textContent = `${voice.name} (${voice.lang})`;
-                    if (voice.default) {
+                    if (voice.default || voice.lang.startsWith('en')) {
                         option.selected = true;
                     }
                     voiceSelect.appendChild(option);
@@ -558,282 +1168,417 @@
             }
         }
 
-        // Load voices on page load and when they change
-        loadVoices();
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = loadVoices;
-        }
-
-        // Update UI values
-        speechRateInput.addEventListener('input', (e) => {
-            const rate = parseFloat(e.target.value);
-            let label = 'Normal';
-            if (rate < 1) label = 'Slow';
-            else if (rate > 1) label = 'Fast';
-            rateValueEl.textContent = `${rate.toFixed(1)}x ${label}`;
-        });
-
-        // MediaPipe Hands setup
-        function initializeMediaPipe() {
-            hands = new Hands({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-                }
-            });
-
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.5
-            });
-
-            hands.onResults(onResults);
-        }
-
-        // Process hand detection results
+        // ============================================
+        // MEDIAPIPE PROCESSING
+        // ============================================
+        
         function onResults(results) {
+            // Update FPS counter
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsTime >= 1000) {
+                fps = frameCount;
+                fpsCounter.textContent = fps;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+            
+            // Setup canvas
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
             ctx.save();
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 
+                // Draw hand landmarks
                 if (showLandmarksCheck.checked) {
                     drawHandLandmarks(landmarks);
                 }
                 
-                const word = recognizeWord(landmarks);
-                if (word) {
-                    handleDetectedWord(word);
+                // Recognize gesture
+                const detection = recognizeGesture(landmarks);
+                if (detection) {
+                    handleDetection(detection);
                 }
             } else {
-                currentWordEl.classList.add('hidden');
+                wordOverlay.classList.add('hidden');
+                gestureHistory = [];
             }
             
             ctx.restore();
         }
 
-        // Draw hand landmarks
         function drawHandLandmarks(landmarks) {
+            // Connections
             const connections = [
-                [0,1],[1,2],[2,3],[3,4],
-                [0,5],[5,6],[6,7],[7,8],
-                [0,9],[9,10],[10,11],[11,12],
-                [0,13],[13,14],[14,15],[15,16],
-                [0,17],[17,18],[18,19],[19,20],
-                [5,9],[9,13],[13,17]
+                [0,1],[1,2],[2,3],[3,4],      // Thumb
+                [0,5],[5,6],[6,7],[7,8],      // Index
+                [0,9],[9,10],[10,11],[11,12], // Middle
+                [0,13],[13,14],[14,15],[15,16], // Ring
+                [0,17],[17,18],[18,19],[19,20], // Pinky
+                [5,9],[9,13],[13,17]          // Palm
             ];
 
-            ctx.strokeStyle = 'rgba(139, 92, 246, 0.6)';
-            ctx.lineWidth = 2;
-            
+            // Draw connections
+            ctx.lineWidth = 3;
             connections.forEach(([start, end]) => {
                 const startPoint = landmarks[start];
                 const endPoint = landmarks[end];
                 
+                const gradient = ctx.createLinearGradient(
+                    startPoint.x * canvas.width, startPoint.y * canvas.height,
+                    endPoint.x * canvas.width, endPoint.y * canvas.height
+                );
+                gradient.addColorStop(0, 'rgba(139, 92, 246, 0.7)');
+                gradient.addColorStop(1, 'rgba(99, 102, 241, 0.7)');
+                
+                ctx.strokeStyle = gradient;
                 ctx.beginPath();
                 ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height);
                 ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height);
                 ctx.stroke();
             });
 
+            // Draw landmarks
             landmarks.forEach((landmark, index) => {
                 const x = landmark.x * canvas.width;
                 const y = landmark.y * canvas.height;
+                const radius = index === 0 ? 8 : 5;
+                
+                // Glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = index === 0 ? '#8b5cf6' : '#6366f1';
                 
                 ctx.beginPath();
-                ctx.arc(x, y, index === 0 ? 8 : 4, 0, 2 * Math.PI);
-                ctx.fillStyle = index === 0 ? '#8b5cf6' : '#6366f1';
+                ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                gradient.addColorStop(0, index === 0 ? '#a78bfa' : '#818cf8');
+                gradient.addColorStop(1, index === 0 ? '#8b5cf6' : '#6366f1');
+                
+                ctx.fillStyle = gradient;
                 ctx.fill();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.lineWidth = 2;
                 ctx.stroke();
             });
         }
 
-        // Word recognition based on hand gestures
-        function recognizeWord(landmarks) {
+        // ============================================
+        // ADVANCED GESTURE RECOGNITION
+        // ============================================
+        
+        function recognizeGesture(landmarks) {
             const fingerTips = [4, 8, 12, 16, 20];
             const fingerBases = [2, 5, 9, 13, 17];
             const wrist = landmarks[0];
             
-            // Calculate finger states
+            // Calculate finger extension states with improved accuracy
             const fingersExtended = fingerTips.map((tip, i) => {
-                if (i === 0) {
-                    return landmarks[tip].x > landmarks[fingerBases[i]].x + 0.05;
+                const tipLandmark = landmarks[tip];
+                const baseLandmark = landmarks[fingerBases[i]];
+                
+                if (i === 0) { // Thumb - check horizontal distance
+                    const horizontalDist = Math.abs(tipLandmark.x - baseLandmark.x);
+                    return horizontalDist > 0.06;
+                } else {
+                    // Other fingers - check vertical distance
+                    const verticalDist = baseLandmark.y - tipLandmark.y;
+                    return verticalDist > 0.06;
                 }
-                return landmarks[tip].y < landmarks[fingerBases[i]].y - 0.05;
             });
 
             const [thumbOut, indexUp, middleUp, ringUp, pinkyUp] = fingersExtended;
             
-            // Calculate distances
+            // Calculate key points
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
             const middleTip = landmarks[12];
             const ringTip = landmarks[16];
             const pinkyTip = landmarks[20];
             
-            const thumbIndexDist = distance(thumbTip, indexTip);
-            const thumbMiddleDist = distance(thumbTip, middleTip);
+            // Helper function to calculate distance
+            const dist = (p1, p2) => Math.sqrt(
+                Math.pow(p1.x - p2.x, 2) + 
+                Math.pow(p1.y - p2.y, 2) + 
+                Math.pow(p1.z - p2.z, 2)
+            );
             
-            // Gesture recognition patterns for whole words
+            // Gesture patterns with confidence scoring
+            let detectedWord = null;
+            let confidence = 0;
+            let emoji = '👋';
             
-            // Wave (Hello) - open hand with fingers spread
+            // Wave (Hello) - All fingers extended and spread
             if (indexUp && middleUp && ringUp && pinkyUp && thumbOut) {
                 const fingerSpread = Math.abs(indexTip.x - pinkyTip.x);
-                if (fingerSpread > 0.15) return 'Hello';
+                if (fingerSpread > 0.15) {
+                    detectedWord = 'Hello';
+                    confidence = Math.min(fingerSpread / 0.2, 1);
+                    emoji = '👋';
+                }
             }
             
-            // Thumbs up (Yes/Good)
+            // Thumbs up (Yes)
             if (thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
-                if (landmarks[4].y < landmarks[2].y) return 'Yes';
+                if (landmarks[4].y < landmarks[2].y - 0.05) {
+                    detectedWord = 'Yes';
+                    confidence = 0.9;
+                    emoji = '👍';
+                }
             }
             
-            // Thumbs down (No/Bad)
+            // Thumbs down (No)
             if (thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
-                if (landmarks[4].y > landmarks[2].y) return 'No';
+                if (landmarks[4].y > landmarks[2].y + 0.05) {
+                    detectedWord = 'No';
+                    confidence = 0.9;
+                    emoji = '👎';
+                }
             }
             
-            // Peace sign (Peace/Okay)
-            if (indexUp && middleUp && !ringUp && !pinkyUp && !thumbOut) {
-                return 'Okay';
+            // Peace sign (Okay)
+            if (indexUp && middleUp && !ringUp && !pinkyUp) {
+                const fingerDist = dist(indexTip, middleTip);
+                if (fingerDist > 0.05 && fingerDist < 0.15) {
+                    detectedWord = 'Okay';
+                    confidence = 0.85;
+                    emoji = '✌️';
+                }
             }
             
-            // Open palm (Stop/Wait)
+            // Stop (Open palm)
             if (indexUp && middleUp && ringUp && pinkyUp && !thumbOut) {
-                const palmFlat = Math.abs(indexTip.y - pinkyTip.y) < 0.1;
-                if (palmFlat) return 'Stop';
+                const palmFlat = Math.abs(indexTip.y - pinkyTip.y) < 0.08;
+                if (palmFlat) {
+                    detectedWord = 'Stop';
+                    confidence = 0.88;
+                    emoji = '✋';
+                }
             }
             
-            // OK sign (Okay/Perfect)
+            // OK sign (Perfect)
+            const thumbIndexDist = dist(thumbTip, indexTip);
             if (thumbIndexDist < 0.05 && middleUp && ringUp && pinkyUp) {
-                return 'Perfect';
+                detectedWord = 'Perfect';
+                confidence = 0.92;
+                emoji = '👌';
             }
             
-            // Pointing (You/That)
+            // Pointing (You)
             if (indexUp && !middleUp && !ringUp && !pinkyUp && !thumbOut) {
-                return 'You';
+                detectedWord = 'You';
+                confidence = 0.85;
+                emoji = '👉';
             }
             
-            // Closed fist (Strong/Fight)
+            // Fist (Strong)
             if (!thumbOut && !indexUp && !middleUp && !ringUp && !pinkyUp) {
-                return 'Strong';
+                detectedWord = 'Strong';
+                confidence = 0.9;
+                emoji = '✊';
             }
             
             // Rock hand (Love)
             if (indexUp && pinkyUp && !middleUp && !ringUp && thumbOut) {
-                return 'Love';
+                detectedWord = 'Love';
+                confidence = 0.88;
+                emoji = '🤘';
             }
             
-            // Hang loose (Call/Contact)
+            // Hang loose (Call)
             if (thumbOut && pinkyUp && !indexUp && !middleUp && !ringUp) {
-                return 'Call';
+                detectedWord = 'Call';
+                confidence = 0.87;
+                emoji = '🤙';
             }
             
-            // Three fingers (Three/Wait)
+            // Three fingers (Wait)
             if (indexUp && middleUp && ringUp && !pinkyUp && !thumbOut) {
-                return 'Wait';
+                detectedWord = 'Wait';
+                confidence = 0.86;
+                emoji = '🖐️';
             }
             
             // Point to self (I/Me)
             if (indexUp && !middleUp && !ringUp && !pinkyUp) {
-                const pointingToSelf = landmarks[8].x > 0.4 && landmarks[8].x < 0.6;
-                if (pointingToSelf) return 'I';
+                const pointingInward = indexTip.x > 0.4 && indexTip.x < 0.6;
+                if (pointingInward) {
+                    detectedWord = 'I';
+                    confidence = 0.83;
+                    emoji = '🙋';
+                }
             }
             
             // Hands together approximation (Please/Thanks)
+            const thumbMiddleDist = dist(thumbTip, middleTip);
             if (thumbIndexDist < 0.08 && thumbMiddleDist < 0.08) {
-                return 'Please';
+                detectedWord = 'Please';
+                confidence = 0.8;
+                emoji = '🙏';
             }
             
             // Additional gestures
             if (middleUp && !indexUp && !ringUp && !pinkyUp && !thumbOut) {
-                return 'Bye';
+                detectedWord = 'Bye';
+                confidence = 0.82;
+                emoji = '👋';
             }
             
             if (thumbOut && indexUp && !middleUp && !ringUp && !pinkyUp) {
-                return 'Help';
+                detectedWord = 'Help';
+                confidence = 0.84;
+                emoji = '🆘';
+            }
+            
+            if (detectedWord && confidence >= parseFloat(detectionThresholdInput.value)) {
+                return { word: detectedWord, confidence: confidence, emoji: emoji };
             }
             
             return null;
         }
 
-        function distance(p1, p2) {
-            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        }
-
-        // Handle detected word
-        function handleDetectedWord(word) {
+        // ============================================
+        // DETECTION HANDLING
+        // ============================================
+        
+        function handleDetection(detection) {
             const now = Date.now();
             
-            currentWordEl.classList.remove('hidden');
-            wordDisplayEl.textContent = word;
-
-            if (word !== lastDetectedWord) {
-                lastDetectedWord = word;
+            // Add to gesture history for smoothing
+            gestureHistory.push(detection.word);
+            if (gestureHistory.length > GESTURE_HISTORY_LENGTH) {
+                gestureHistory.shift();
+            }
+            
+            // Find most common gesture in history
+            const mostCommon = getMostCommonGesture();
+            
+            // Update UI
+            wordOverlay.classList.remove('hidden');
+            wordDisplay.textContent = mostCommon;
+            gestureEmoji.textContent = detection.emoji;
+            gestureConfidence = detection.confidence;
+            
+            // Update confidence meter
+            if (showConfidenceCheck.checked) {
+                confidenceMeter.classList.remove('hidden');
+                const confidencePercent = Math.round(detection.confidence * 100);
+                confidenceValue.textContent = `${confidencePercent}%`;
+                confidenceBar.style.width = `${confidencePercent}%`;
+            } else {
+                confidenceMeter.classList.add('hidden');
+            }
+            
+            // Check if gesture is stable enough to add to sentence
+            if (mostCommon !== lastDetectedWord) {
+                lastDetectedWord = mostCommon;
                 lastDetectionTime = now;
-            } else if (now - lastDetectionTime > 1200) {
-                if (sentence.length === 0 || sentence[sentence.length - 1] !== word) {
-                    addWordToSentence(word);
-                    lastDetectionTime = now + 1000;
+            } else if (now - lastDetectionTime > HOLD_TIME) {
+                // Check if not already in sentence (avoid duplicates)
+                if (sentence.length === 0 || sentence[sentence.length - 1] !== mostCommon) {
+                    addWordToSentence(mostCommon, detection.emoji);
+                    lastDetectionTime = now + 1000; // Cooldown
+                    gestureHistory = []; // Clear history after successful detection
                 }
             }
         }
 
-        // Add word to sentence
-        function addWordToSentence(word) {
-            if (autoSpaceCheck.checked && sentence.length > 0) {
-                sentence.push(word);
-            } else {
-                sentence.push(word);
-            }
+        function getMostCommonGesture() {
+            const counts = {};
+            let maxCount = 0;
+            let mostCommon = '';
             
+            gestureHistory.forEach(word => {
+                counts[word] = (counts[word] || 0) + 1;
+                if (counts[word] > maxCount) {
+                    maxCount = counts[word];
+                    mostCommon = word;
+                }
+            });
+            
+            return mostCommon;
+        }
+
+        // ============================================
+        // SENTENCE MANAGEMENT
+        // ============================================
+        
+        function addWordToSentence(word, emoji) {
+            sentence.push(word);
             updateSentenceDisplay();
-            addToHistory(word);
+            addToHistory(word, emoji);
+            
             wordCount++;
             wordCountEl.textContent = wordCount;
             speakBtn.disabled = false;
             
+            // Vibration feedback
+            if (vibrateCheck.checked && 'vibrate' in navigator) {
+                navigator.vibrate([50, 30, 50]);
+            }
+            
+            // Auto-speak
             if (autoSpeakCheck.checked) {
                 speakWord(word);
             }
             
-            if (vibrateCheck.checked && 'vibrate' in navigator) {
-                navigator.vibrate(50);
-            }
+            // Visual feedback
+            showToast(`Added: ${word} ${emoji}`);
         }
 
-        // Update sentence display
         function updateSentenceDisplay() {
             if (sentence.length === 0) {
                 sentenceDisplay.innerHTML = '<span class="text-gray-500">Start signing to build your sentence...</span>';
             } else {
-                sentenceDisplay.textContent = sentence.join(' ');
+                const words = sentence.map((word, index) => 
+                    `<span class="word-chip" onclick="removeWord(${index})">
+                        ${word}
+                        <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </span>`
+                ).join('');
+                sentenceDisplay.innerHTML = words;
             }
         }
 
-        // Add to history
-        function addToHistory(word) {
+        function removeWord(index) {
+            sentence.splice(index, 1);
+            updateSentenceDisplay();
+            if (sentence.length === 0) {
+                speakBtn.disabled = true;
+            }
+        }
+
+        function addToHistory(word, emoji) {
             const time = new Date().toLocaleTimeString('en-US', { 
                 hour: '2-digit', 
-                minute: '2-digit' 
+                minute: '2-digit',
+                second: '2-digit'
             });
             
             const historyItem = document.createElement('div');
-            historyItem.className = 'bg-darker p-3 rounded-lg flex items-center justify-between slide-in';
+            historyItem.className = 'glass-light p-3 rounded-xl';
+            historyItem.style.animation = 'chipIn 0.3s ease-out';
             historyItem.innerHTML = `
-                <div>
-                    <div class="font-medium text-sm">${word}</div>
-                    <div class="text-xs text-gray-500">${time}</div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${emoji}</span>
+                        <div>
+                            <div class="font-semibold text-sm">${word}</div>
+                            <div class="text-xs text-gray-500">${time}</div>
+                        </div>
+                    </div>
+                    <button onclick="addQuickPhrase('${word}')" 
+                            class="text-purple-400 hover:text-purple-300 text-xs font-medium px-3 py-1 rounded-lg hover:bg-purple-600 hover:bg-opacity-20 transition">
+                        + Add
+                    </button>
                 </div>
-                <button onclick="addWordToSentence('${word}')" class="text-purple-400 text-xs hover:text-purple-300">
-                    + Add
-                </button>
             `;
             
             if (wordHistoryEl.querySelector('.text-gray-500')) {
@@ -842,12 +1587,20 @@
             
             wordHistoryEl.insertBefore(historyItem, wordHistoryEl.firstChild);
             
-            if (wordHistoryEl.children.length > 20) {
+            // Keep only last 15 items
+            while (wordHistoryEl.children.length > 15) {
                 wordHistoryEl.removeChild(wordHistoryEl.lastChild);
             }
         }
 
-        // Text-to-speech
+        function clearHistory() {
+            wordHistoryEl.innerHTML = '<div class="text-sm text-gray-500 text-center py-4">No words detected yet</div>';
+        }
+
+        // ============================================
+        // TEXT-TO-SPEECH
+        // ============================================
+        
         function speakWord(word) {
             const rate = parseFloat(speechRateInput.value);
             const selectedVoice = voices[voiceSelect.value];
@@ -884,14 +1637,38 @@
                         utterance.voice = selectedVoice;
                     }
                     
+                    utterance.onstart = () => {
+                        speakBtn.innerHTML = `
+                            <svg class="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                            </svg>
+                            Speaking...
+                        `;
+                    };
+                    
+                    utterance.onend = () => {
+                        speakBtn.innerHTML = `
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                            </svg>
+                            Speak
+                        `;
+                    };
+                    
                     window.speechSynthesis.speak(utterance);
                 }
             }
         }
 
-        // Camera controls
+        // ============================================
+        // CAMERA CONTROLS
+        // ============================================
+        
         async function startCamera() {
             try {
+                updateStatus('loading', 'Starting camera...');
+                
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: facingMode,
@@ -923,12 +1700,11 @@
                 stopBtn.disabled = false;
                 flipBtn.disabled = false;
                 
-                statusDot.classList.remove('bg-red-500');
-                statusDot.classList.add('bg-green-500', 'pulse');
-                statusText.textContent = 'Active';
+                updateStatus('active', 'Camera active');
             } catch (error) {
                 console.error('Camera error:', error);
-                alert('Could not access camera. Please grant permissions.');
+                showToast('❌ Could not access camera. Please grant permissions.');
+                updateStatus('error', 'Camera error');
             }
         }
 
@@ -946,11 +1722,10 @@
             startBtn.disabled = false;
             stopBtn.disabled = true;
             flipBtn.disabled = true;
-            currentWordEl.classList.add('hidden');
+            wordOverlay.classList.add('hidden');
+            confidenceMeter.classList.add('hidden');
             
-            statusDot.classList.remove('bg-green-500', 'pulse');
-            statusDot.classList.add('bg-yellow-500');
-            statusText.textContent = 'Stopped';
+            updateStatus('stopped', 'Camera stopped');
         }
 
         async function flipCamera() {
@@ -962,7 +1737,44 @@
             }
         }
 
-        // Session timer
+        function toggleFullscreen() {
+            const container = document.getElementById('videoContainer');
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.error('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function updateStatus(state, text) {
+            statusText.textContent = text;
+            statusDot.className = 'w-2 h-2 rounded-full';
+            
+            switch(state) {
+                case 'ready':
+                    statusDot.classList.add('bg-yellow-500');
+                    break;
+                case 'loading':
+                    statusDot.classList.add('bg-yellow-500', 'pulse');
+                    break;
+                case 'active':
+                    statusDot.classList.add('bg-green-500', 'pulse');
+                    break;
+                case 'stopped':
+                    statusDot.classList.add('bg-gray-500');
+                    break;
+                case 'error':
+                    statusDot.classList.add('bg-red-500');
+                    break;
+            }
+        }
+
+        // ============================================
+        // SESSION TIMER
+        // ============================================
+        
         function startSessionTimer() {
             setInterval(() => {
                 if (isRunning && sessionStartTime) {
@@ -974,9 +1786,13 @@
             }, 1000);
         }
 
-        // Quick phrase functions
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+        
         function addQuickPhrase(phrase) {
-            sentence.push(...phrase.split(' '));
+            const words = phrase.split(' ');
+            sentence.push(...words);
             updateSentenceDisplay();
             speakBtn.disabled = false;
             
@@ -987,14 +1803,15 @@
             if (vibrateCheck.checked && 'vibrate' in navigator) {
                 navigator.vibrate(50);
             }
+            
+            showToast(`✅ Added: ${phrase}`);
         }
 
-        // Utility functions
         function copyToClipboard() {
             if (sentence.length > 0) {
                 const text = sentence.join(' ');
                 navigator.clipboard.writeText(text).then(() => {
-                    showToast('Copied to clipboard!');
+                    showToast('📋 Copied to clipboard!');
                 });
             }
         }
@@ -1004,9 +1821,14 @@
                 const text = sentence.join(' ');
                 if (navigator.share) {
                     try {
-                        await navigator.share({ text: text });
+                        await navigator.share({ 
+                            title: 'SignSpeak Pro',
+                            text: text 
+                        });
                     } catch (err) {
-                        copyToClipboard();
+                        if (err.name !== 'AbortError') {
+                            copyToClipboard();
+                        }
                     }
                 } else {
                     copyToClipboard();
@@ -1021,10 +1843,10 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `sign-language-${Date.now()}.txt`;
+                a.download = `signspeak-${Date.now()}.txt`;
                 a.click();
                 URL.revokeObjectURL(url);
-                showToast('Downloaded!');
+                showToast('💾 Downloaded!');
             }
         }
 
@@ -1035,37 +1857,112 @@
             }
         }
 
-        function clearHistory() {
-            wordHistoryEl.innerHTML = '<div class="text-sm text-gray-500 text-center py-4">No words detected yet</div>';
-        }
-
         function showToast(message) {
-            // Simple toast notification
             const toast = document.createElement('div');
-            toast.className = 'fixed bottom-4 right-4 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-            toast.textContent = message;
+            toast.className = 'toast';
+            toast.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-medium">${message}</span>
+                </div>
+            `;
             document.body.appendChild(toast);
             
             setTimeout(() => {
-                toast.remove();
-            }, 2000);
+                toast.classList.add('out');
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
         }
 
-        // Event listeners
+        // ============================================
+        // MODAL CONTROLS
+        // ============================================
+        
+        function openSettings() {
+            settingsModal.classList.add('active');
+        }
+
+        function closeSettings() {
+            settingsModal.classList.remove('active');
+        }
+
+        function openTutorial() {
+            tutorialModal.classList.add('active');
+        }
+
+        function closeTutorial() {
+            tutorialModal.classList.remove('active');
+        }
+
+        // Close modals on backdrop click
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) closeSettings();
+        });
+
+        tutorialModal.addEventListener('click', (e) => {
+            if (e.target === tutorialModal) closeTutorial();
+        });
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+        
         startBtn.addEventListener('click', startCamera);
         stopBtn.addEventListener('click', stopCamera);
         flipBtn.addEventListener('click', flipCamera);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
         speakBtn.addEventListener('click', speakSentence);
         clearSentenceBtn.addEventListener('click', () => {
             sentence = [];
             updateSentenceDisplay();
             speakBtn.disabled = true;
+            showToast('🗑️ Sentence cleared');
+        });
+        settingsBtn.addEventListener('click', openSettings);
+        tutorialBtn.addEventListener('click', openTutorial);
+
+        // Settings updates
+        speechRateInput.addEventListener('input', (e) => {
+            const rate = parseFloat(e.target.value);
+            let label = 'Normal';
+            if (rate < 0.8) label = 'Slow';
+            else if (rate > 1.2) label = 'Fast';
+            rateValueEl.textContent = `${rate.toFixed(1)}x ${label}`;
         });
 
-        // Initialize
+        detectionThresholdInput.addEventListener('input', (e) => {
+            const threshold = parseFloat(e.target.value);
+            thresholdValueEl.textContent = `${Math.round(threshold * 100)}%`;
+        });
+
+        // Load voices
+        loadVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        // ============================================
+        // INITIALIZE ON LOAD
+        // ============================================
+        
         window.addEventListener('load', () => {
             initializeMediaPipe();
+            
+            // Show tutorial on first visit
+            const hasVisited = localStorage.getItem('signspeak_visited');
+            if (!hasVisited) {
+                setTimeout(() => {
+                    openTutorial();
+                    localStorage.setItem('signspeak_visited', 'true');
+                }, 1000);
+            }
         });
+
+        // Prevent pull-to-refresh
+        document.body.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
     </script>
 </body>
 </html>
